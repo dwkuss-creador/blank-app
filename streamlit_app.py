@@ -15,7 +15,7 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# Estilos CSS optimizados para dispositivos móviles
+# Estilos CSS optimizados para dispositivos móviles y barra lateral
 st.markdown(
     """
 <style>
@@ -95,7 +95,7 @@ COLUMNAS_BD = [
 
 
 # ---------------------------------------------------------
-# CONEXIÓN DIRECTA CON GOOGLE SHEETS
+# CONEXIÓN DIRECTA CON GOOGLE SHEETS (SINCRO FUERTE)
 # ---------------------------------------------------------
 def get_api_url():
   return st.secrets.get("SHEETS_API_URL", "")
@@ -119,26 +119,57 @@ def cargar_datos():
           df["SECTOR"] = df["SECTOR"].astype(str)
           df["LOTE"] = df["LOTE"].astype(str)
           return df.fillna("")
-    except Exception:
-      pass
+    except Exception as e:
+      st.sidebar.error(f"Error al leer base: {e}")
 
   if "db_local" not in st.session_state:
     st.session_state.db_local = pd.DataFrame(columns=COLUMNAS_BD)
   return st.session_state.db_local
 
 
-def guardar_datos(df):
+def agregar_filas_sheets(nuevas_filas_dicts):
+  api_url = get_api_url()
+  if not api_url:
+    return False, "No está configurada la URL de Sheets en Secrets."
+
+  filas_para_enviar = []
+  for f in nuevas_filas_dicts:
+    fila = [str(f.get(col, "")) for col in COLUMNAS_BD]
+    filas_para_enviar.append(fila)
+
+  payload = {"action": "append", "rows": filas_para_enviar}
+  try:
+    resp = requests.post(api_url, json=payload, timeout=12)
+    if resp.status_code == 200:
+      res_json = resp.json()
+      if res_json.get("status") == "success":
+        return True, "Guardado exitoso en Google Sheets."
+      else:
+        return False, f"Respuesta de Google Script: {res_json}"
+    else:
+      return False, f"Error HTTP {resp.status_code} desde Google Script."
+  except Exception as e:
+    return False, f"Error de conexión: {str(e)}"
+
+
+def guardar_datos_completos(df):
   st.session_state.db_local = df
   api_url = get_api_url()
   if api_url:
     try:
       matriz = [COLUMNAS_BD] + df.astype(str).values.tolist()
       payload = {"action": "update_all", "data": matriz}
-      requests.post(api_url, json=payload, timeout=10)
-      return True
-    except Exception:
-      pass
-  return True
+      resp = requests.post(api_url, json=payload, timeout=12)
+      if resp.status_code == 200:
+        res_json = resp.json()
+        if res_json.get("status") == "success":
+          return True, "Base de datos sincronizada por completo."
+        else:
+          return False, f"Respuesta de Google: {res_json}"
+      return False, f"Error HTTP {resp.status_code}"
+    except Exception as e:
+      return False, str(e)
+  return True, "Modo local"
 
 
 # ---------------------------------------------------------
@@ -164,7 +195,7 @@ def validar_celular(celular):
 
 
 # ---------------------------------------------------------
-# EXPORTACIÓN
+# EXPORTACIÓN A EXCEL Y PDF
 # ---------------------------------------------------------
 def exportar_excel(df):
   output = io.BytesIO()
@@ -246,7 +277,7 @@ if "filtro_alarma_texto" not in st.session_state:
   st.session_state.filtro_alarma_texto = ""
 
 # ---------------------------------------------------------
-# BARRA LATERAL (SIDEBAR)
+# BARRA LATERAL (SIDEBAR) CON ORDEN SOLICITADO
 # ---------------------------------------------------------
 with st.sidebar:
   st.image("https://img.icons8.com/fluency/96/neighborhood.png", width=65)
@@ -385,7 +416,7 @@ if st.session_state.pagina_actual == "🔍 Consultas":
   else:
     st.warning("No se encontraron registros coincidentes.")
 
-  # Descargas organizadas para celular
+  # Descargas organizadas para celular en 2x2
   st.markdown("---")
   st.markdown("### 📥 Descargar Reportes")
   d_row1_col1, d_row1_col2 = st.columns(2)
@@ -642,26 +673,28 @@ elif st.session_state.pagina_actual == "📝 Alta / Modificación":
                 "ALARMA_4": "",
             })
 
-          df_actualizado = pd.concat(
-              [df_base, pd.DataFrame(nuevas_filas)], ignore_index=True
-          )
-          guardar_datos(df_actualizado)
+          # Sincronización robusta con Google Sheets vía API "append"
+          ok, msg_sheets = agregar_filas_sheets(nuevas_filas)
 
-          st.session_state.precarga = {
-              "c1_apellido": apellido,
-              "c1_nombre": nombre,
-              "c1_celular": celular,
-              "alarma1": alarma1,
-              "alarma2": alarma2,
-              "alarma3": alarma3,
-              "alarma4": alarma4,
-              "tiene_c2": (otro_contacto == "Si"),
-              "c2_apellido": c2_apellido,
-              "c2_nombre": c2_nombre,
-              "c2_celular": c2_celular,
-          }
-          st.session_state.mostrar_dialogo_otro_lote = True
-          st.rerun()
+          if ok:
+            st.success("¡Datos guardados correctamente en Google Sheets!")
+            st.session_state.precarga = {
+                "c1_apellido": apellido,
+                "c1_nombre": nombre,
+                "c1_celular": celular,
+                "alarma1": alarma1,
+                "alarma2": alarma2,
+                "alarma3": alarma3,
+                "alarma4": alarma4,
+                "tiene_c2": (otro_contacto == "Si"),
+                "c2_apellido": c2_apellido,
+                "c2_nombre": c2_nombre,
+                "c2_celular": c2_celular,
+            }
+            st.session_state.mostrar_dialogo_otro_lote = True
+            st.rerun()
+          else:
+            st.error(f"Error al grabar en Google Sheets: {msg_sheets}")
 
   else:
     st.subheader("Modificación de Datos Existentes")
@@ -772,6 +805,9 @@ elif st.session_state.pagina_actual == "📝 Alta / Modificación":
             for col in COLUMNAS_BD:
               df_modificado.at[idx, col] = f[col]
 
-          guardar_datos(df_modificado)
-          st.success("¡Datos actualizados con éxito!")
-          st.rerun()
+          exito, msg_sync = guardar_datos_completos(df_modificado)
+          if exito:
+            st.success("¡Datos actualizados con éxito en Google Sheets!")
+            st.rerun()
+          else:
+            st.error(f"Error al sincronizar cambios: {msg_sync}")
