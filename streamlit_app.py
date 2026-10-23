@@ -778,7 +778,7 @@ elif st.session_state.pagina_actual == "📝 Alta / Modificación":
       )
     with col_s:
       s_mod = st.selectbox("Seleccione Sector:", ["A", "B"], key="mod_sector")
-    with col_l = st.columns(3)[2]:
+    with col_l:
       l_mod = st.selectbox(
           "Seleccione Lote:", [str(i) for i in range(1, 25)], key="mod_lote"
       )
