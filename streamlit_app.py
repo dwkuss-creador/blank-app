@@ -260,7 +260,7 @@ if st.session_state.pagina_actual == "🔍 Consultas":
     st.markdown("---")
     st.markdown("#### 📍 Búsqueda por Ubicación (Manzana o Lote)")
 
-    col_tipo, col_filtros = st.columns()
+    col_tipo, col_filtros = st.columns(2)
     with col_tipo:
       tipo_ubicacion = st.radio(
           "Seleccione criterio:",
@@ -420,5 +420,276 @@ elif st.session_state.pagina_actual == "📝 Alta / Modificación":
 
     st.markdown("##### Números de Alarma (Hasta 4 números por lote)")
     a1, a2, a3, a4 = st.columns(4)
-   
+    with a1:
+      alarma1 = st.text_input(
+          "Alarma 1", value=str(p.get("alarma1", ""))
+      ).strip()
+    with a2:
+      alarma2 = st.text_input(
+          "Alarma 2", value=str(p.get("alarma2", ""))
+      ).strip()
+    with a3:
+      alarma3 = st.text_input(
+          "Alarma 3", value=str(p.get("alarma3", ""))
+      ).strip()
+    with a4:
+      alarma4 = st.text_input(
+          "Alarma 4", value=str(p.get("alarma4", ""))
+      ).strip()
 
+    st.markdown("---")
+    otro_contacto = st.selectbox(
+        "¿Quiere dar de alta otro contacto para el mismo lote?",
+        ["No", "Si"],
+        index=1 if p.get("tiene_c2") else 0,
+    )
+
+    c2_apellido, c2_nombre, c2_celular = "", "", ""
+    if otro_contacto == "Si":
+      st.markdown("#### Segundo Contacto")
+      c2_ap_col, c2_nom_col = st.columns(2)
+      with c2_ap_col:
+        c2_apellido = st.text_input(
+            "APELLIDO (Segundo Contacto) *", value=p.get("c2_apellido", "")
+        ).strip()
+      with c2_nom_col:
+        c2_nombre = st.text_input(
+            "NOMBRE (Segundo Contacto) *", value=p.get("c2_nombre", "")
+        ).strip()
+      c2_celular = st.text_input(
+          "CELULAR (Segundo Contacto) *",
+          value=p.get("c2_celular", ""),
+          placeholder="Sin guiones ni espacios",
+          key="c2_cel",
+      ).strip()
+
+    if st.button("💾 Grabar Alta", type="primary", use_container_width=True):
+      valido_c1, msg_c1 = validar_celular(celular)
+      if not apellido or not nombre:
+        st.error("Por favor, ingrese Apellido y Nombre del contacto principal.")
+      elif not valido_c1:
+        st.error(f"Contacto Principal: {msg_c1}")
+      else:
+        error_c2 = False
+        if otro_contacto == "Si":
+          if not c2_apellido or not c2_nombre:
+            st.error("Por favor, ingrese Apellido y Nombre del segundo contacto.")
+            error_c2 = True
+          else:
+            valido_c2, msg_c2 = validar_celular(c2_celular)
+            if not valido_c2:
+              st.error(f"Segundo Contacto: {msg_c2}")
+              error_c2 = True
+
+        if not error_c2:
+          nuevas_filas = [{
+              "MANZANA": manzana,
+              "SECTOR": sector,
+              "LOTE": lote,
+              "TIPO_CONTACTO": "Principal",
+              "APELLIDO": apellido,
+              "NOMBRE": nombre,
+              "CELULAR": celular,
+              "ALARMA_1": alarma1,
+              "ALARMA_2": alarma2,
+              "ALARMA_3": alarma3,
+              "ALARMA_4": alarma4,
+          }]
+
+          if otro_contacto == "Si":
+            nuevas_filas.append({
+                "MANZANA": manzana,
+                "SECTOR": sector,
+                "LOTE": lote,
+                "TIPO_CONTACTO": "Secundario",
+                "APELLIDO": c2_apellido,
+                "NOMBRE": c2_nombre,
+                "CELULAR": c2_celular,
+                "ALARMA_1": "",
+                "ALARMA_2": "",
+                "ALARMA_3": "",
+                "ALARMA_4": "",
+            })
+
+          df_actualizado = pd.concat(
+              [df_base, pd.DataFrame(nuevas_filas)], ignore_index=True
+          )
+          guardar_datos(df_actualizado)
+
+          st.session_state.precarga = {
+              "c1_apellido": apellido,
+              "c1_nombre": nombre,
+              "c1_celular": celular,
+              "alarma1": alarma1,
+              "alarma2": alarma2,
+              "alarma3": alarma3,
+              "alarma4": alarma4,
+              "tiene_c2": (otro_contacto == "Si"),
+              "c2_apellido": c2_apellido,
+              "c2_nombre": c2_nombre,
+              "c2_celular": c2_celular,
+          }
+          st.session_state.mostrar_dialogo_otro_lote = True
+          st.rerun()
+
+  else:
+    st.subheader("Modificación de Datos Existentes")
+    col_m, col_s, col_l = st.columns(3)
+    with col_m:
+      m_mod = st.selectbox(
+          "Seleccione Manzana:",
+          [str(i) for i in range(15, 26)],
+          key="mod_manzana",
+      )
+    with col_s:
+      s_mod = st.selectbox("Seleccione Sector:", ["A", "B"], key="mod_sector")
+    with col_l:
+      l_mod = st.selectbox(
+          "Seleccione Lote:", [str(i) for i in range(1, 25)], key="mod_lote"
+      )
+
+    coincidencias = df_base[
+        (df_base["MANZANA"] == m_mod)
+        & (df_base["SECTOR"] == s_mod)
+        & (df_base["LOTE"] == l_mod)
+    ]
+
+    if coincidencias.empty:
+      st.warning(
+          f"No se encontró ningún registro para Manzana {m_mod} Sector {s_mod}"
+          f" Lote {l_mod}."
+      )
+    else:
+      st.info(f"Se encontraron {len(coincidencias)} contacto(s) para este lote.")
+      filas_editadas = []
+
+      for idx, row in coincidencias.iterrows():
+        tipo = row.get("TIPO_CONTACTO", "Contacto")
+        st.markdown(f"#### Editando {tipo}: {row.get('APELLIDO', '')}")
+
+        c_ap, c_nom, c_cel = st.columns(3)
+        with c_ap:
+          nuevo_ap = st.text_input(
+              f"Apellido ({tipo})", value=row.get("APELLIDO", ""), key=f"ap_{idx}"
+          )
+        with c_nom:
+          nuevo_nom = st.text_input(
+              f"Nombre ({tipo})", value=row.get("NOMBRE", ""), key=f"nom_{idx}"
+          )
+        with c_cel:
+          nuevo_cel = st.text_input(
+              f"Celular ({tipo})",
+              value=row.get("CELULAR", ""),
+              key=f"cel_{idx}",
+          )
+
+        a1, a2, a3, a4 = row.get("ALARMA_1", ""), "", "", ""
+        if tipo == "Principal":
+          st.caption("Alarmas del Lote")
+          al1_c, al2_c, al3_c, al4_c = st.columns(4)
+          with al1_c:
+            a1 = st.text_input(
+                "Alarma 1", value=str(row.get("ALARMA_1", "")), key=f"al1_{idx}"
+            )
+          with al2_c:
+            a2 = st.text_input(
+                "Alarma 2", value=str(row.get("ALARMA_2", "")), key=f"al2_{idx}"
+            )
+          with al3_c:
+            a3 = st.text_input(
+                "Alarma 3", value=str(row.get("ALARMA_3", "")), key=f"al3_{idx}"
+            )
+          with al4_c:
+            a4 = st.text_input(
+                "Alarma 4", value=str(row.get("ALARMA_4", "")), key=f"al4_{idx}"
+            )
+
+        filas_editadas.append({
+            "INDEX": idx,
+            "MANZANA": m_mod,
+            "SECTOR": s_mod,
+            "LOTE": l_mod,
+            "TIPO_CONTACTO": tipo,
+            "APELLIDO": nuevo_ap,
+            "NOMBRE": nuevo_nom,
+            "CELULAR": nuevo_cel,
+            "ALARMA_1": a1,
+            "ALARMA_2": a2,
+            "ALARMA_3": a3,
+            "ALARMA_4": a4,
+        })
+
+      if st.button("💾 Guardar Modificaciones", type="primary"):
+        error = False
+        for f in filas_editadas:
+          valido, msg = validar_celular(f["CELULAR"])
+          if not valido:
+            st.error(f"Error en {f['TIPO_CONTACTO']}: {msg}")
+            error = True
+            break
+
+        if not error:
+          df_modificado = df_base.copy()
+          for f in filas_editadas:
+            idx = f["INDEX"]
+            for col in COLUMNAS_BD:
+              df_modificado.at[idx, col] = f[col]
+
+          guardar_datos(df_modificado)
+          st.success("¡Datos actualizados con éxito!")
+          st.rerun()
+
+# =========================================================
+# HOJA 3: DATOS ÚTILES
+# =========================================================
+elif st.session_state.pagina_actual == "ℹ️ Datos Útiles":
+  st.markdown(
+      '<div class="main-header">ℹ️ Directorio y Datos Útiles</div>',
+      unsafe_allow_html=True,
+  )
+  st.markdown(
+      '<div class="sub-header">Información de contacto, emergencias y servicios'
+      " del barrio.</div>",
+      unsafe_allow_html=True,
+  )
+
+  col1, col2 = st.columns(2)
+  with col1:
+    st.markdown("### 🚨 Teléfonos de Emergencia")
+    st.info("""
+        * **Guardia / Portería Calandrias:** (A completar)
+        * **Policía / Comisaría:** 911 / (A completar)
+        * **Bomberos:** 100 / (A completar)
+        * **Emergencias Médicas / Ambulancia:** 107
+        """)
+  with col2:
+    st.markdown("### 🏢 Administración y Servicios")
+    st.info("""
+        * **Administración del Barrio:** (A completar)
+        * **Mantenimiento General:** (A completar)
+        * **Recolección de Residuos:** Días y horarios a definir
+        * **Comisión Vecinal:** (A completar)
+        """)
+
+# =========================================================
+# HOJA 4: GALERÍA E IMÁGENES
+# =========================================================
+elif st.session_state.pagina_actual == "🖼️ Galería e Imágenes":
+  st.markdown(
+      '<div class="main-header">🖼️ Galería y Comunicados</div>',
+      unsafe_allow_html=True,
+  )
+  st.markdown(
+      '<div class="sub-header">Planos del barrio, avisos importantes y'
+      " fotografías.</div>",
+      unsafe_allow_html=True,
+  )
+
+  st.write("Sube imágenes o comunicados para visualizarlos aquí:")
+  archivo_img = st.file_uploader(
+      "Subir una imagen o aviso (JPG / PNG):", type=["png", "jpg", "jpeg"]
+  )
+  if archivo_img:
+    st.image(archivo_img, caption="Imagen cargada", use_column_width=True)
+  else:
+    st.info("Aún no se han cargado imágenes para exhibir.")
