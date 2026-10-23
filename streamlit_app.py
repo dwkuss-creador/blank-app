@@ -115,12 +115,13 @@ def get_api_url():
   return st.secrets.get("SHEETS_API_URL", "")
 
 
-def limpiar_texto_alarma(val):
-  if pd.isna(val):
+def normalizar_valor(val):
+  """Limpia cualquier valor numérico o texto a un string sin decimales ni espacios."""
+  if pd.isna(val) or val is None:
     return ""
   s = str(val).strip()
   if s.endswith(".0"):
-    s = s[:-2]
+    s = s[:-2].strip()
   return s
 
 
@@ -149,13 +150,9 @@ def cargar_datos():
         df[col] = ""
     df = df[COLUMNAS_BD]
 
-    # Normalización de textos
-    df["MANZANA"] = df["MANZANA"].astype(str).str.strip().str.replace(".0", "")
-    df["SECTOR"] = df["SECTOR"].astype(str).str.strip().str.upper()
-    df["LOTE"] = df["LOTE"].astype(str).str.strip().str.replace(".0", "")
-
-    for al_col in ["ALARMA_1", "ALARMA_2", "ALARMA_3", "ALARMA_4"]:
-      df[al_col] = df[al_col].apply(limpiar_texto_alarma)
+    # Normalización completa de todas las columnas de texto y números
+    for col in COLUMNAS_BD:
+      df[col] = df[col].apply(normalizar_valor)
 
     # DEDUPLICACIÓN AUTOMÁTICA
     df = df.drop_duplicates(
@@ -175,7 +172,7 @@ def agregar_filas_sheets(nuevas_filas_dicts):
 
   filas_para_enviar = []
   for f in nuevas_filas_dicts:
-    fila = [str(f.get(col, "")).strip() for col in COLUMNAS_BD]
+    fila = [normalizar_valor(f.get(col, "")) for col in COLUMNAS_BD]
     filas_para_enviar.append(fila)
 
   payload = {"action": "append", "rows": filas_para_enviar}
@@ -375,20 +372,18 @@ if st.session_state.pagina_actual == "🔍 Consultas":
       )
 
     if buscar_disparado:
-      st.session_state.filtro_alarma_activo = limpiar_texto_alarma(
-          alarma_escrita
-      )
+      st.session_state.filtro_alarma_activo = normalizar_valor(alarma_escrita)
       st.rerun()
 
   alarma_activa = st.session_state.filtro_alarma_activo
   df_resultado = df_base.copy()
   criterio_activo = ""
 
-  # FILTRADO DE DATOS
+  # FILTRADO DE DATOS POR ALARMA
   if alarma_activa:
     criterio_activo = f"Alarma Nº {alarma_activa}"
 
-    # Búsqueda coincidente en cualquiera de las 4 columnas de alarma
+    # Búsqueda coincidente comparando valores limpios
     lotes_con_alarma = df_resultado[
         (df_resultado["ALARMA_1"] == alarma_activa)
         | (df_resultado["ALARMA_2"] == alarma_activa)
@@ -397,7 +392,7 @@ if st.session_state.pagina_actual == "🔍 Consultas":
     ]
 
     if not lotes_con_alarma.empty:
-      # Obtener todos los contactos de los lotes que contienen la alarma activa
+      # Obtenemos todos los contactos (principal y secundario) del lote encontrado
       filtro_lotes = pd.Series(False, index=df_resultado.index)
       for _, fila_lote in lotes_con_alarma.iterrows():
         mz = fila_lote["MANZANA"]
@@ -412,16 +407,7 @@ if st.session_state.pagina_actual == "🔍 Consultas":
     else:
       df_resultado = pd.DataFrame(columns=COLUMNAS_BD)
 
-    # Cartel informativo y botón para restaurar la vista completa sin desarmar la UI
-    st.markdown(
-        f"""
-        <div style="background-color: #FEF3C7; padding: 12px; border-radius: 8px; border-left: 5px solid #F59E0B; margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center;">
-            <span style="color: #92400E; font-weight: 600;">⚠️ Mostrando resultados de la búsqueda de alarma: {criterio_activo}</span>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-    if st.button("🔄 Ver Todos los Lotes / Limpiar Filtro Alarma"):
+    if st.button("🔄 Ver Todos los Lotes"):
       st.session_state.filtro_alarma_activo = ""
       st.rerun()
 
@@ -434,12 +420,10 @@ if st.session_state.pagina_actual == "🔍 Consultas":
     tipo_ubicacion = st.radio(
         "Seleccione Criterio de visualización:",
         ["Mostrar Todos", "Por Manzana", "Por Lote Específico"],
-        # Si hay búsqueda activa por alarma, forzamos que no pise el criterio hasta que se use el radio
         index=0 if alarma_activa else 0,
     )
 
   with col_filtros:
-    # Solo aplicamos los filtros de ubicación si NO hay búsqueda por alarma activa
     if tipo_ubicacion == "Por Manzana":
       cm, cs = st.columns(2)
       with cm:
@@ -452,8 +436,8 @@ if st.session_state.pagina_actual == "🔍 Consultas":
       if not alarma_activa:
         criterio_activo = f"Manzana {m_sel} Sector {s_sel}"
         df_resultado = df_resultado[
-            (df_resultado["MANZANA"] == m_sel)
-            & (df_resultado["SECTOR"] == s_sel)
+            (df_resultado["MANZANA"] == str(m_sel))
+            & (df_resultado["SECTOR"] == str(s_sel))
         ]
 
     elif tipo_ubicacion == "Por Lote Específico":
@@ -472,15 +456,15 @@ if st.session_state.pagina_actual == "🔍 Consultas":
       if not alarma_activa:
         criterio_activo = f"Manzana {m_sel}{s_sel} - Lote {l_sel}"
         df_resultado = df_resultado[
-            (df_resultado["MANZANA"] == m_sel)
-            & (df_resultado["SECTOR"] == s_sel)
-            & (df_resultado["LOTE"] == l_sel)
+            (df_resultado["MANZANA"] == str(m_sel))
+            & (df_resultado["SECTOR"] == str(s_sel))
+            & (df_resultado["LOTE"] == str(l_sel))
         ]
     else:
       if not alarma_activa:
         criterio_activo = "Base Completa"
 
-  # Visualización de resultados
+  # Visualización directa de los datos encontrados
   st.markdown("---")
   st.markdown(f"### Resultados ({criterio_activo})")
   if not df_resultado.empty:
@@ -784,9 +768,9 @@ elif st.session_state.pagina_actual == "📝 Alta / Modificación":
       )
 
     coincidencias = df_base[
-        (df_base["MANZANA"] == m_mod)
-        & (df_base["SECTOR"] == s_mod)
-        & (df_base["LOTE"] == l_mod)
+        (df_base["MANZANA"] == str(m_mod))
+        & (df_base["SECTOR"] == str(s_mod))
+        & (df_base["LOTE"] == str(l_mod))
     ]
 
     if coincidencias.empty:
@@ -845,9 +829,9 @@ elif st.session_state.pagina_actual == "📝 Alta / Modificación":
 
         filas_editadas.append({
             "INDEX": idx,
-            "MANZANA": m_mod,
-            "SECTOR": s_mod,
-            "LOTE": l_mod,
+            "MANZANA": str(m_mod),
+            "SECTOR": str(s_mod),
+            "LOTE": str(l_mod),
             "TIPO_CONTACTO": tipo,
             "APELLIDO": nuevo_ap,
             "NOMBRE": nuevo_nom,
