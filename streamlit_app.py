@@ -231,7 +231,7 @@ if st.session_state.pagina_actual == "🔍 Consultas":
       unsafe_allow_html=True,
   )
 
-  col_al1, col_al2 = st.columns()
+  col_al1, col_al2 = st.columns(2)
   with col_al1:
     alarma_input = st.text_input(
         "Número de Alarma:",
