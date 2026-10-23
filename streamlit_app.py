@@ -1,4 +1,3 @@
-
 import io
 import json
 from fpdf import FPDF
@@ -13,7 +12,7 @@ st.set_page_config(
     page_title="APP VECINOS CALANDRIAS",
     page_icon="🏡",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="collapsed",  # 📱 Sidebar colapsado por defecto en celulares
 )
 
 # Estilos CSS: Bloqueo de oscurecimiento + Adaptabilidad móvil
@@ -117,7 +116,6 @@ def get_api_url():
 
 
 def normalizar_valor(val):
-  """Limpia cualquier valor numérico o texto a un string sin decimales ni espacios."""
   if pd.isna(val) or val is None:
     return ""
   s = str(val).strip()
@@ -151,11 +149,9 @@ def cargar_datos():
         df[col] = ""
     df = df[COLUMNAS_BD]
 
-    # Normalización completa de todas las columnas de texto y números
     for col in COLUMNAS_BD:
       df[col] = df[col].apply(normalizar_valor)
 
-    # DEDUPLICACIÓN AUTOMÁTICA
     df = df.drop_duplicates(
         subset=["MANZANA", "SECTOR", "LOTE", "TIPO_CONTACTO"], keep="last"
     )
@@ -296,6 +292,10 @@ OPCIONES_MENU = [
     "📝 Alta / Modificación",
 ]
 
+# Control de administrador por parámetro URL (?admin=si)
+params = st.query_params
+es_admin = params.get("admin") == "si"
+
 if "pagina_actual" not in st.session_state:
   st.session_state.pagina_actual = "🔍 Consultas"
 
@@ -308,8 +308,9 @@ if "mostrar_dialogo_otro_lote" not in st.session_state:
 if "filtro_alarma_activo" not in st.session_state:
   st.session_state.filtro_alarma_activo = ""
 
+
 # ---------------------------------------------------------
-# BARRA LATERAL (SIDEBAR)
+# BARRA LATERAL (SIDEBAR) CON AUTO-OCULTADO AL TOCAR
 # ---------------------------------------------------------
 with st.sidebar:
   st.image("https://img.icons8.com/fluency/96/neighborhood.png", width=65)
@@ -321,7 +322,12 @@ with st.sidebar:
       OPCIONES_MENU,
       index=OPCIONES_MENU.index(st.session_state.pagina_actual),
   )
-  st.session_state.pagina_actual = pagina
+
+  # Auto-ocultar sidebar al cambiar de sección
+  if pagina != st.session_state.pagina_actual:
+    st.session_state.pagina_actual = pagina
+    st.rerun()
+
   st.markdown("---")
   if get_api_url():
     st.success("🟢 Google Sheets Conectado")
@@ -378,12 +384,11 @@ if st.session_state.pagina_actual == "🔍 Consultas":
 
   alarma_activa = st.session_state.filtro_alarma_activo
 
-  # 1. EL RESULTADO DE LA ALARMA QUEDA A CONTINUACIÓN DEL CAMPO DE INGRESO
+  # Resultado de la Alarma inmediato
   if alarma_activa:
     st.markdown(f"### Vecino de la Alarma Nº {alarma_activa}")
     df_alarma = df_base.copy()
 
-    # Filtramos la alarma de forma exacta
     lotes_con_alarma = df_alarma[
         (df_alarma["ALARMA_1"] == alarma_activa)
         | (df_alarma["ALARMA_2"] == alarma_activa)
@@ -407,7 +412,7 @@ if st.session_state.pagina_actual == "🔍 Consultas":
     else:
       st.warning("No hay datos para esa seleccion")
 
-  # SECCIÓN DE UBICACIÓN (SIEMPRE VISIBLE ABAJO)
+  # SECCIÓN DE UBICACIÓN
   st.markdown("---")
   st.markdown("#### 📍 Buscar por Ubicación:")
 
@@ -460,13 +465,12 @@ if st.session_state.pagina_actual == "🔍 Consultas":
     else:
       criterio_activo = "Base Completa"
 
-  # Visualización de resultados de ubicación
+  # Resultados de ubicación
   st.markdown("---")
   st.markdown(f"### Resultados ({criterio_activo})")
   if not df_resultado.empty:
     st.dataframe(df_resultado, use_container_width=True, hide_index=True)
   else:
-    # MENSAJE DE ADVERTENCIA SOLICITADO
     st.warning("No hay datos para esa seleccion")
 
   # Descargas organizadas para celular
@@ -525,8 +529,7 @@ elif st.session_state.pagina_actual == "ℹ️ Datos Útiles":
       unsafe_allow_html=True,
   )
   st.markdown(
-      '<div class="sub-header">Información de contacto, emergencias y servicios'
-      " del barrio.</div>",
+      '<div class="sub-header">Información de contacto, emergencias y servicios del barrio.</div>',
       unsafe_allow_html=True,
   )
 
@@ -549,7 +552,7 @@ elif st.session_state.pagina_actual == "ℹ️ Datos Útiles":
         """)
 
 # =========================================================
-# SECCIÓN 3: GALERÍA E IMÁGENES
+# SECCIÓN 3: GALERÍA E IMÁGENES (POTESTAD DE SUBIDA EXCLUSIVA)
 # =========================================================
 elif st.session_state.pagina_actual == "🖼️ Galería e Imágenes":
   st.markdown(
@@ -557,19 +560,36 @@ elif st.session_state.pagina_actual == "🖼️ Galería e Imágenes":
       unsafe_allow_html=True,
   )
   st.markdown(
-      '<div class="sub-header">Planos del barrio, avisos importantes y'
-      " fotografías.</div>",
+      '<div class="sub-header">Planos del barrio, avisos importantes y fotografías.</div>',
       unsafe_allow_html=True,
   )
 
-  st.write("Sube imágenes o comunicados para visualizarlos aquí:")
-  archivo_img = st.file_uploader(
-      "Subir una imagen o aviso (JPG / PNG):", type=["png", "jpg", "jpeg"]
-  )
-  if archivo_img:
-    st.image(archivo_img, caption="Imagen cargada", use_column_width=True)
+  # Se guardan las imágenes en session_state para mantener la persistencia durante la sesión
+  if "imagenes_galeria" not in st.session_state:
+    st.session_state.imagenes_galeria = []
+
+  # Cargador de imágenes visible EXCLUSIVAMENTE mediante URL ?admin=si
+  if es_admin:
+    st.markdown("### 👨‍💻 Panel de Administración (Subida)")
+    archivo_img = st.file_uploader(
+        "Sube una imagen, plano o comunicado (JPG/PNG):", type=["png", "jpg", "jpeg"]
+    )
+    if archivo_img:
+      # Leer bytes y almacenar en la sesión
+      img_bytes = archivo_img.read()
+      st.session_state.imagenes_galeria.append(img_bytes)
+      st.success("¡Imagen agregada a la galería con éxito!")
+      st.rerun()
+
+  # Mostrar la Galería de fotos (Visible para todos los vecinos)
+  st.markdown("### 📸 Galería del Barrio")
+  if st.session_state.imagenes_galeria:
+    # Mostramos las imágenes de la sesión de más nuevas a más viejas
+    for i, img in enumerate(reversed(st.session_state.imagenes_galeria)):
+      st.image(img, caption=f"Comunicado / Plano Nº {len(st.session_state.imagenes_galeria) - i}", use_column_width=True)
+      st.markdown("---")
   else:
-    st.info("Aún no se han cargado imágenes para exhibir.")
+    st.info("Aún no se han cargado imágenes en la galería para exhibir.")
 
 # =========================================================
 # SECCIÓN 4: ALTA / MODIFICACIÓN
@@ -772,8 +792,7 @@ elif st.session_state.pagina_actual == "📝 Alta / Modificación":
 
     if coincidencias.empty:
       st.warning(
-          f"No se encontró ningún registro para Manzana {m_mod} Sector {s_mod}"
-          f" Lote {l_mod}."
+          f"No se encontró ningún registro para Manzana {m_mod} Sector {s_mod} Lote {l_mod}."
       )
     else:
       st.info(f"Se encontraron {len(coincidencias)} contacto(s) para este lote.")
