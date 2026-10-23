@@ -115,9 +115,18 @@ def get_api_url():
   return st.secrets.get("SHEETS_API_URL", "")
 
 
+def limpiar_texto_alarma(val):
+  """Limpia cadenas de alarmas eliminando decimales (.0) y espacios."""
+  if pd.isna(val):
+    return ""
+  s = str(val).strip()
+  if s.endswith(".0"):
+    s = s[:-2]
+  return s
+
+
 @st.cache_data(ttl=60, show_spinner=False)
 def obtener_datos_remotos(api_url):
-  """Descarga de datos con timeout de 30 segundos y caché de 1 minuto."""
   if not api_url:
     return None
   try:
@@ -140,11 +149,16 @@ def cargar_datos():
       if col not in df.columns:
         df[col] = ""
     df = df[COLUMNAS_BD]
-    df["MANZANA"] = df["MANZANA"].astype(str).str.strip()
-    df["SECTOR"] = df["SECTOR"].astype(str).str.strip()
-    df["LOTE"] = df["LOTE"].astype(str).str.strip()
 
-    # DEDUPLICACIÓN AUTOMÁTICA: evita registros repetidos por lote y contacto
+    # Normalización de textos
+    df["MANZANA"] = df["MANZANA"].astype(str).str.strip().str.replace(".0", "")
+    df["SECTOR"] = df["SECTOR"].astype(str).str.strip().str.upper()
+    df["LOTE"] = df["LOTE"].astype(str).str.strip().str.replace(".0", "")
+
+    for al_col in ["ALARMA_1", "ALARMA_2", "ALARMA_3", "ALARMA_4"]:
+      df[al_col] = df[al_col].apply(limpiar_texto_alarma)
+
+    # DEDUPLICACIÓN AUTOMÁTICA
     df = df.drop_duplicates(
         subset=["MANZANA", "SECTOR", "LOTE", "TIPO_CONTACTO"], keep="last"
     )
@@ -162,14 +176,14 @@ def agregar_filas_sheets(nuevas_filas_dicts):
 
   filas_para_enviar = []
   for f in nuevas_filas_dicts:
-    fila = [str(f.get(col, "")) for col in COLUMNAS_BD]
+    fila = [str(f.get(col, "")).strip() for col in COLUMNAS_BD]
     filas_para_enviar.append(fila)
 
   payload = {"action": "append", "rows": filas_para_enviar}
   try:
     resp = requests.post(api_url, json=payload, timeout=30)
     if resp.status_code == 200:
-      st.cache_data.clear()  # Limpia la caché para leer el dato recién guardado
+      st.cache_data.clear()
       return True, "Guardado exitoso."
     return False, f"Error HTTP {resp.status_code} desde Google Script."
   except Exception as e:
@@ -345,7 +359,7 @@ if st.session_state.pagina_actual == "🔍 Consultas":
       unsafe_allow_html=True,
   )
 
-  # Formulario con vaciado automático (clear_on_submit=True) y sin botón limpiar
+  # Formulario con vaciado automático (clear_on_submit=True)
   with st.form(key="form_busqueda_alarma", clear_on_submit=True):
     c_input, c_btn = st.columns([5, 1.2])
     with c_input:
@@ -362,7 +376,9 @@ if st.session_state.pagina_actual == "🔍 Consultas":
       )
 
     if buscar_disparado:
-      st.session_state.filtro_alarma_activo = alarma_escrita
+      st.session_state.filtro_alarma_activo = limpiar_texto_alarma(
+          alarma_escrita
+      )
       st.rerun()
 
   alarma_activa = st.session_state.filtro_alarma_activo
@@ -371,16 +387,34 @@ if st.session_state.pagina_actual == "🔍 Consultas":
 
   if alarma_activa:
     criterio_activo = f"Alarma Nº {alarma_activa}"
-    condicion = (
+
+    # Búsqueda coincidente en cualquiera de las 4 columnas de alarma
+    lotes_con_alarma = df_resultado[
         (df_resultado["ALARMA_1"] == alarma_activa)
         | (df_resultado["ALARMA_2"] == alarma_activa)
         | (df_resultado["ALARMA_3"] == alarma_activa)
         | (df_resultado["ALARMA_4"] == alarma_activa)
-    )
-    df_resultado = df_resultado[condicion]
+    ]
+
+    if not lotes_con_alarma.empty:
+      # Obtener todas las personas registradas en esos lotes encontrados
+      filtro_lotes = pd.Series(False, index=df_resultado.index)
+      for _, fila_lote in lotes_con_alarma.iterrows():
+        mz = fila_lote["MANZANA"]
+        sec = fila_lote["SECTOR"]
+        lt = fila_lote["LOTE"]
+        filtro_lotes |= (
+            (df_resultado["MANZANA"] == mz)
+            & (df_resultado["SECTOR"] == sec)
+            & (df_resultado["LOTE"] == lt)
+        )
+      df_resultado = df_resultado[filtro_lotes]
+    else:
+      df_resultado = pd.DataFrame(columns=COLUMNAS_BD)
+
     st.info(
-        f"Filtrando por **{criterio_activo}**. Ingrese una búsqueda en blanco o"
-        " use los filtros inferiores para restablecer."
+        f"Filtrando por **{criterio_activo}**. Ingrese una búsqueda vacía o"
+        " seleccione otra sección para restablecer."
     )
 
   else:
@@ -436,7 +470,7 @@ if st.session_state.pagina_actual == "🔍 Consultas":
   if not df_resultado.empty:
     st.dataframe(df_resultado, use_container_width=True, hide_index=True)
   else:
-    st.warning("No se encontraron registros coincidentes.")
+    st.warning("No se encontraron registros coincidentes para esta búsqueda.")
 
   # Descargas organizadas para celular
   st.markdown("---")
@@ -832,4 +866,3 @@ elif st.session_state.pagina_actual == "📝 Alta / Modificación":
             st.rerun()
           else:
             st.error(f"Error al sincronizar cambios: {msg_sync}")
-
