@@ -116,7 +116,6 @@ def get_api_url():
 
 
 def limpiar_texto_alarma(val):
-  """Limpia cadenas de alarmas eliminando decimales (.0) y espacios."""
   if pd.isna(val):
     return ""
   s = str(val).strip()
@@ -359,7 +358,7 @@ if st.session_state.pagina_actual == "🔍 Consultas":
       unsafe_allow_html=True,
   )
 
-  # Formulario con vaciado automático (clear_on_submit=True)
+  # Formulario con vaciado automático
   with st.form(key="form_busqueda_alarma", clear_on_submit=True):
     c_input, c_btn = st.columns([5, 1.2])
     with c_input:
@@ -385,6 +384,7 @@ if st.session_state.pagina_actual == "🔍 Consultas":
   df_resultado = df_base.copy()
   criterio_activo = ""
 
+  # FILTRADO DE DATOS
   if alarma_activa:
     criterio_activo = f"Alarma Nº {alarma_activa}"
 
@@ -397,7 +397,7 @@ if st.session_state.pagina_actual == "🔍 Consultas":
     ]
 
     if not lotes_con_alarma.empty:
-      # Obtener todas las personas registradas en esos lotes encontrados
+      # Obtener todos los contactos de los lotes que contienen la alarma activa
       filtro_lotes = pd.Series(False, index=df_resultado.index)
       for _, fila_lote in lotes_con_alarma.iterrows():
         mz = fila_lote["MANZANA"]
@@ -412,56 +412,72 @@ if st.session_state.pagina_actual == "🔍 Consultas":
     else:
       df_resultado = pd.DataFrame(columns=COLUMNAS_BD)
 
-    st.info(
-        f"Filtrando por **{criterio_activo}**. Ingrese una búsqueda vacía o"
-        " seleccione otra sección para restablecer."
+    # Cartel informativo y botón para restaurar la vista completa sin desarmar la UI
+    st.markdown(
+        f"""
+        <div style="background-color: #FEF3C7; padding: 12px; border-radius: 8px; border-left: 5px solid #F59E0B; margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center;">
+            <span style="color: #92400E; font-weight: 600;">⚠️ Mostrando resultados de la búsqueda de alarma: {criterio_activo}</span>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    if st.button("🔄 Ver Todos los Lotes / Limpiar Filtro Alarma"):
+      st.session_state.filtro_alarma_activo = ""
+      st.rerun()
+
+  # SECCIÓN DE UBICACIÓN (SIEMPRE VISIBLE ABAJO)
+  st.markdown("---")
+  st.markdown("#### 📍 Buscar por Ubicación:")
+
+  col_tipo, col_filtros = st.columns([1.5, 3])
+  with col_tipo:
+    tipo_ubicacion = st.radio(
+        "Seleccione Criterio de visualización:",
+        ["Mostrar Todos", "Por Manzana", "Por Lote Específico"],
+        # Si hay búsqueda activa por alarma, forzamos que no pise el criterio hasta que se use el radio
+        index=0 if alarma_activa else 0,
     )
 
-  else:
-    # Opciones de ubicación visibles si no hay alarma activa
-    st.markdown("---")
-    st.markdown("#### 📍 O buscar por Ubicación:")
+  with col_filtros:
+    # Solo aplicamos los filtros de ubicación si NO hay búsqueda por alarma activa
+    if tipo_ubicacion == "Por Manzana":
+      cm, cs = st.columns(2)
+      with cm:
+        m_sel = st.selectbox(
+            "Manzana:", [str(i) for i in range(15, 26)], key="c_mz"
+        )
+      with cs:
+        s_sel = st.selectbox("Sector (A/B):", ["A", "B"], key="c_sec")
 
-    col_tipo, col_filtros = st.columns([1.5, 3])
-    with col_tipo:
-      tipo_ubicacion = st.radio(
-          "Criterio:", ["Mostrar Todos", "Por Manzana", "Por Lote Específico"]
-      )
-
-    with col_filtros:
-      if tipo_ubicacion == "Por Manzana":
-        cm, cs = st.columns(2)
-        with cm:
-          m_sel = st.selectbox(
-              "Manzana:", [str(i) for i in range(15, 26)], key="c_mz"
-          )
-        with cs:
-          s_sel = st.selectbox("Sector (A/B):", ["A", "B"], key="c_sec")
+      if not alarma_activa:
         criterio_activo = f"Manzana {m_sel} Sector {s_sel}"
         df_resultado = df_resultado[
             (df_resultado["MANZANA"] == m_sel)
             & (df_resultado["SECTOR"] == s_sel)
         ]
 
-      elif tipo_ubicacion == "Por Lote Específico":
-        cm, cs, cl = st.columns(3)
-        with cm:
-          m_sel = st.selectbox(
-              "Manzana:", [str(i) for i in range(15, 26)], key="l_mz"
-          )
-        with cs:
-          s_sel = st.selectbox("Sector:", ["A", "B"], key="l_sec")
-        with cl:
-          l_sel = st.selectbox(
-              "Lote:", [str(i) for i in range(1, 25)], key="l_lot"
-          )
+    elif tipo_ubicacion == "Por Lote Específico":
+      cm, cs, cl = st.columns(3)
+      with cm:
+        m_sel = st.selectbox(
+            "Manzana:", [str(i) for i in range(15, 26)], key="l_mz"
+        )
+      with cs:
+        s_sel = st.selectbox("Sector:", ["A", "B"], key="l_sec")
+      with cl:
+        l_sel = st.selectbox(
+            "Lote:", [str(i) for i in range(1, 25)], key="l_lot"
+        )
+
+      if not alarma_activa:
         criterio_activo = f"Manzana {m_sel}{s_sel} - Lote {l_sel}"
         df_resultado = df_resultado[
             (df_resultado["MANZANA"] == m_sel)
             & (df_resultado["SECTOR"] == s_sel)
             & (df_resultado["LOTE"] == l_sel)
         ]
-      else:
+    else:
+      if not alarma_activa:
         criterio_activo = "Base Completa"
 
   # Visualización de resultados
@@ -470,7 +486,7 @@ if st.session_state.pagina_actual == "🔍 Consultas":
   if not df_resultado.empty:
     st.dataframe(df_resultado, use_container_width=True, hide_index=True)
   else:
-    st.warning("No se encontraron registros coincidentes para esta búsqueda.")
+    st.warning("No se encontraron registros coincidentes.")
 
   # Descargas organizadas para celular
   st.markdown("---")
@@ -762,7 +778,7 @@ elif st.session_state.pagina_actual == "📝 Alta / Modificación":
       )
     with col_s:
       s_mod = st.selectbox("Seleccione Sector:", ["A", "B"], key="mod_sector")
-    with col_l:
+    with col_l = st.columns(3)[2]:
       l_mod = st.selectbox(
           "Seleccione Lote:", [str(i) for i in range(1, 25)], key="mod_lote"
       )
