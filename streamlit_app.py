@@ -6,7 +6,7 @@ import requests
 import streamlit as st
 
 # ---------------------------------------------------------
-# CONFIGURACIÓN DE PÁGINA Y OPTIMIZACIÓN RESPONSIVA
+# CONFIGURACIÓN DE PÁGINA Y ESTILOS
 # ---------------------------------------------------------
 st.set_page_config(
     page_title="APP VECINOS CALANDRIAS",
@@ -15,10 +15,24 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# Estilos CSS optimizados para dispositivos móviles y barra lateral
+# Estilos CSS: Bloqueo de oscurecimiento + Adaptabilidad móvil
 st.markdown(
     """
 <style>
+    /* EVITAR OSCURECIMIENTO / DESENFOQUE AL RECARGAR O PENSAR */
+    [data-stale="true"] {
+        opacity: 1 !important;
+        filter: none !important;
+        transition: none !important;
+    }
+    div[data-testid="stAppViewBlockContainer"] {
+        opacity: 1 !important;
+    }
+    .element-container, .stMarkdown, .stDataFrame, .stTextInput, .stButton {
+        opacity: 1 !important;
+    }
+
+    /* Tipografía y encabezados */
     .main-header {
         font-size: 1.85rem;
         font-weight: 700;
@@ -51,16 +65,16 @@ st.markdown(
     }
     
     /* Campo de entrada de alarma llamativo */
-    div[data-testid="stTextInput"]:has(input[aria-label="input_alarma_box"]) input {
-        border: 2.5px solid #2563EB !important;
+    div[data-testid="stTextInput"] input {
+        border: 2px solid #2563EB !important;
         background-color: #F8FAFC !important;
-        font-size: 1.15rem !important;
+        font-size: 1.1rem !important;
         font-weight: 600 !important;
         color: #0F172A !important;
         border-radius: 8px !important;
     }
 
-    /* Botones amigables para pantallas táctiles */
+    /* Botones táctiles */
     .stButton>button {
         border-radius: 8px;
         font-weight: 600;
@@ -95,32 +109,46 @@ COLUMNAS_BD = [
 
 
 # ---------------------------------------------------------
-# CONEXIÓN DIRECTA CON GOOGLE SHEETS (SINCRO FUERTE)
+# CONEXIÓN DIRECTA CON CACHÉ Y TIMEOUT AMPLIADO
 # ---------------------------------------------------------
 def get_api_url():
   return st.secrets.get("SHEETS_API_URL", "")
 
 
+@st.cache_data(ttl=60, show_spinner=False)
+def obtener_datos_remotos(api_url):
+  """Descarga de datos con timeout de 30 segundos y caché de 1 minuto."""
+  if not api_url:
+    return None
+  try:
+    resp = requests.get(api_url, timeout=30)
+    if resp.status_code == 200:
+      return resp.json()
+  except Exception:
+    return None
+  return None
+
+
 def cargar_datos():
   api_url = get_api_url()
-  if api_url:
-    try:
-      resp = requests.get(api_url, timeout=10)
-      if resp.status_code == 200:
-        data = resp.json()
-        if len(data) > 1:
-          headers = [str(h).strip().upper() for h in data[0]]
-          df = pd.DataFrame(data[1:], columns=headers)
-          for col in COLUMNAS_BD:
-            if col not in df.columns:
-              df[col] = ""
-          df = df[COLUMNAS_BD]
-          df["MANZANA"] = df["MANZANA"].astype(str)
-          df["SECTOR"] = df["SECTOR"].astype(str)
-          df["LOTE"] = df["LOTE"].astype(str)
-          return df.fillna("")
-    except Exception as e:
-      st.sidebar.error(f"Error al leer base: {e}")
+  data = obtener_datos_remotos(api_url)
+
+  if data and len(data) > 1:
+    headers = [str(h).strip().upper() for h in data[0]]
+    df = pd.DataFrame(data[1:], columns=headers)
+    for col in COLUMNAS_BD:
+      if col not in df.columns:
+        df[col] = ""
+    df = df[COLUMNAS_BD]
+    df["MANZANA"] = df["MANZANA"].astype(str).str.strip()
+    df["SECTOR"] = df["SECTOR"].astype(str).str.strip()
+    df["LOTE"] = df["LOTE"].astype(str).str.strip()
+
+    # DEDUPLICACIÓN AUTOMÁTICA: evita registros repetidos por lote y contacto
+    df = df.drop_duplicates(
+        subset=["MANZANA", "SECTOR", "LOTE", "TIPO_CONTACTO"], keep="last"
+    )
+    return df.fillna("")
 
   if "db_local" not in st.session_state:
     st.session_state.db_local = pd.DataFrame(columns=COLUMNAS_BD)
@@ -139,15 +167,11 @@ def agregar_filas_sheets(nuevas_filas_dicts):
 
   payload = {"action": "append", "rows": filas_para_enviar}
   try:
-    resp = requests.post(api_url, json=payload, timeout=12)
+    resp = requests.post(api_url, json=payload, timeout=30)
     if resp.status_code == 200:
-      res_json = resp.json()
-      if res_json.get("status") == "success":
-        return True, "Guardado exitoso en Google Sheets."
-      else:
-        return False, f"Respuesta de Google Script: {res_json}"
-    else:
-      return False, f"Error HTTP {resp.status_code} desde Google Script."
+      st.cache_data.clear()  # Limpia la caché para leer el dato recién guardado
+      return True, "Guardado exitoso."
+    return False, f"Error HTTP {resp.status_code} desde Google Script."
   except Exception as e:
     return False, f"Error de conexión: {str(e)}"
 
@@ -159,13 +183,10 @@ def guardar_datos_completos(df):
     try:
       matriz = [COLUMNAS_BD] + df.astype(str).values.tolist()
       payload = {"action": "update_all", "data": matriz}
-      resp = requests.post(api_url, json=payload, timeout=12)
+      resp = requests.post(api_url, json=payload, timeout=30)
       if resp.status_code == 200:
-        res_json = resp.json()
-        if res_json.get("status") == "success":
-          return True, "Base de datos sincronizada por completo."
-        else:
-          return False, f"Respuesta de Google: {res_json}"
+        st.cache_data.clear()
+        return True, "Base sincronizada con éxito."
       return False, f"Error HTTP {resp.status_code}"
     except Exception as e:
       return False, str(e)
@@ -195,7 +216,7 @@ def validar_celular(celular):
 
 
 # ---------------------------------------------------------
-# EXPORTACIÓN A EXCEL Y PDF
+# EXPORTACIÓN
 # ---------------------------------------------------------
 def exportar_excel(df):
   output = io.BytesIO()
@@ -273,11 +294,11 @@ if "precarga" not in st.session_state:
 if "mostrar_dialogo_otro_lote" not in st.session_state:
   st.session_state.mostrar_dialogo_otro_lote = False
 
-if "filtro_alarma_texto" not in st.session_state:
-  st.session_state.filtro_alarma_texto = ""
+if "filtro_alarma_activo" not in st.session_state:
+  st.session_state.filtro_alarma_activo = ""
 
 # ---------------------------------------------------------
-# BARRA LATERAL (SIDEBAR) CON ORDEN SOLICITADO
+# BARRA LATERAL (SIDEBAR)
 # ---------------------------------------------------------
 with st.sidebar:
   st.image("https://img.icons8.com/fluency/96/neighborhood.png", width=65)
@@ -294,7 +315,7 @@ with st.sidebar:
   if get_api_url():
     st.success("🟢 Google Sheets Conectado")
   else:
-    st.info("🟡 Modo local de prueba")
+    st.info("🟡 Modo de prueba")
 
 df_base = cargar_datos()
 
@@ -311,7 +332,7 @@ if st.session_state.pagina_actual == "🔍 Consultas":
       unsafe_allow_html=True,
   )
 
-  # Tarjeta de Alarma Prioritaria
+  # Tarjeta de Alarma
   st.markdown(
       """
     <div class="alarma-card">
@@ -324,29 +345,30 @@ if st.session_state.pagina_actual == "🔍 Consultas":
       unsafe_allow_html=True,
   )
 
-  # Fila de Alarma: Campo llamativo + Botones compactos
-  c_input, c_btn, c_clear = st.columns([5, 1.2, 1.2])
-  with c_input:
-    alarma_ingresada = st.text_input(
-        "input_alarma_box",
-        value=st.session_state.filtro_alarma_texto,
-        placeholder="Ej: 104 (Escribe el número aquí)",
-        label_visibility="collapsed",
-    ).strip()
-  with c_btn:
-    if st.button("🔍 Buscar", type="primary", use_container_width=True):
-      st.session_state.filtro_alarma_texto = alarma_ingresada
-      st.rerun()
-  with c_clear:
-    if st.button("✖ Limpiar", use_container_width=True):
-      st.session_state.filtro_alarma_texto = ""
+  # Formulario con vaciado automático (clear_on_submit=True) y sin botón limpiar
+  with st.form(key="form_busqueda_alarma", clear_on_submit=True):
+    c_input, c_btn = st.columns([5, 1.2])
+    with c_input:
+      alarma_escrita = st.text_input(
+          "box_alarma",
+          placeholder=(
+              "Escribe el número de alarma y presiona Enter o Buscar..."
+          ),
+          label_visibility="collapsed",
+      ).strip()
+    with c_btn:
+      buscar_disparado = st.form_submit_button(
+          "🔍 Buscar", type="primary", use_container_width=True
+      )
+
+    if buscar_disparado:
+      st.session_state.filtro_alarma_activo = alarma_escrita
       st.rerun()
 
-  alarma_activa = st.session_state.filtro_alarma_texto
+  alarma_activa = st.session_state.filtro_alarma_activo
   df_resultado = df_base.copy()
   criterio_activo = ""
 
-  # Si busca por alarma, se ocultan las opciones de manzana/lote
   if alarma_activa:
     criterio_activo = f"Alarma Nº {alarma_activa}"
     condicion = (
@@ -357,12 +379,12 @@ if st.session_state.pagina_actual == "🔍 Consultas":
     )
     df_resultado = df_resultado[condicion]
     st.info(
-        f"Filtrando exclusivamente por {criterio_activo}. Presione 'Limpiar'"
-        " para ver otras opciones de búsqueda."
+        f"Filtrando por **{criterio_activo}**. Ingrese una búsqueda en blanco o"
+        " use los filtros inferiores para restablecer."
     )
 
   else:
-    # Solo se muestran Manzana / Lote si NO hay búsqueda de alarma activa
+    # Opciones de ubicación visibles si no hay alarma activa
     st.markdown("---")
     st.markdown("#### 📍 O buscar por Ubicación:")
 
@@ -408,7 +430,7 @@ if st.session_state.pagina_actual == "🔍 Consultas":
       else:
         criterio_activo = "Base Completa"
 
-  # Resultados
+  # Visualización de resultados
   st.markdown("---")
   st.markdown(f"### Resultados ({criterio_activo})")
   if not df_resultado.empty:
@@ -416,7 +438,7 @@ if st.session_state.pagina_actual == "🔍 Consultas":
   else:
     st.warning("No se encontraron registros coincidentes.")
 
-  # Descargas organizadas para celular en 2x2
+  # Descargas organizadas para celular
   st.markdown("---")
   st.markdown("### 📥 Descargar Reportes")
   d_row1_col1, d_row1_col2 = st.columns(2)
@@ -673,7 +695,6 @@ elif st.session_state.pagina_actual == "📝 Alta / Modificación":
                 "ALARMA_4": "",
             })
 
-          # Sincronización robusta con Google Sheets vía API "append"
           ok, msg_sheets = agregar_filas_sheets(nuevas_filas)
 
           if ok:
@@ -811,3 +832,4 @@ elif st.session_state.pagina_actual == "📝 Alta / Modificación":
             st.rerun()
           else:
             st.error(f"Error al sincronizar cambios: {msg_sync}")
+
