@@ -1,5 +1,6 @@
 import io
 import json
+import os
 from fpdf import FPDF
 import pandas as pd
 import requests
@@ -12,7 +13,7 @@ st.set_page_config(
     page_title="APP VECINOS CALANDRIAS",
     page_icon="🏡",
     layout="wide",
-    initial_sidebar_state="collapsed",  # 📱 Sidebar colapsado por defecto en celulares
+    initial_sidebar_state="collapsed",  # 📱 Menú colapsado en móviles
 )
 
 # Estilos CSS: Bloqueo de oscurecimiento + Adaptabilidad móvil
@@ -308,12 +309,38 @@ if "mostrar_dialogo_otro_lote" not in st.session_state:
 if "filtro_alarma_activo" not in st.session_state:
   st.session_state.filtro_alarma_activo = ""
 
+if "imagenes_galeria" not in st.session_state:
+  st.session_state.imagenes_galeria = []
+
+if "sidebar_logo_bytes" not in st.session_state:
+  st.session_state.sidebar_logo_bytes = None
+
 
 # ---------------------------------------------------------
-# BARRA LATERAL (SIDEBAR) CON AUTO-OCULTADO AL TOCAR
+# BARRA LATERAL (SIDEBAR) CON IMAGEN SUPERIOR PERSONALIZADA
 # ---------------------------------------------------------
 with st.sidebar:
-  st.image("https://img.icons8.com/fluency/96/neighborhood.png", width=65)
+  # Imagen en el sidebar arriba de CALANDRIAS
+  logo_colocado = False
+  if st.session_state.sidebar_logo_bytes:
+    st.image(st.session_state.sidebar_logo_bytes, use_container_width=True)
+    logo_colocado = True
+  else:
+    for archivo_candidato in [
+        "logo.png",
+        "logo.jpg",
+        "logo.jpeg",
+        "calandrias.png",
+        "calandrias.jpg",
+    ]:
+      if os.path.exists(archivo_candidato):
+        st.image(archivo_candidato, use_container_width=True)
+        logo_colocado = True
+        break
+
+  if not logo_colocado:
+    st.image("https://img.icons8.com/fluency/96/neighborhood.png", width=70)
+
   st.title("CALANDRIAS")
   st.caption("Padrón Vecinal y Alarmas")
 
@@ -323,7 +350,7 @@ with st.sidebar:
       index=OPCIONES_MENU.index(st.session_state.pagina_actual),
   )
 
-  # Auto-ocultar sidebar al cambiar de sección
+  # Auto-ocultar menú lateral al cambiar de sección
   if pagina != st.session_state.pagina_actual:
     st.session_state.pagina_actual = pagina
     st.rerun()
@@ -384,7 +411,7 @@ if st.session_state.pagina_actual == "🔍 Consultas":
 
   alarma_activa = st.session_state.filtro_alarma_activo
 
-  # Resultado de la Alarma inmediato
+  # 1. El resultado de la alarma queda a continuación del campo de ingreso
   if alarma_activa:
     st.markdown(f"### Vecino de la Alarma Nº {alarma_activa}")
     df_alarma = df_base.copy()
@@ -552,7 +579,7 @@ elif st.session_state.pagina_actual == "ℹ️ Datos Útiles":
         """)
 
 # =========================================================
-# SECCIÓN 3: GALERÍA E IMÁGENES (POTESTAD DE SUBIDA EXCLUSIVA)
+# SECCIÓN 3: GALERÍA E IMÁGENES
 # =========================================================
 elif st.session_state.pagina_actual == "🖼️ Galería e Imágenes":
   st.markdown(
@@ -564,29 +591,58 @@ elif st.session_state.pagina_actual == "🖼️ Galería e Imágenes":
       unsafe_allow_html=True,
   )
 
-  # Se guardan las imágenes en session_state para mantener la persistencia durante la sesión
-  if "imagenes_galeria" not in st.session_state:
-    st.session_state.imagenes_galeria = []
-
-  # Cargador de imágenes visible EXCLUSIVAMENTE mediante URL ?admin=si
+  # CARGADOR EXCLUSIVO PARA ADMINISTRADOR (ARRIBA DEL TÍTULO DE LA GALERÍA)
   if es_admin:
-    st.markdown("### 👨‍💻 Panel de Administración (Subida)")
-    archivo_img = st.file_uploader(
-        "Sube una imagen, plano o comunicado (JPG/PNG):", type=["png", "jpg", "jpeg"]
+    st.markdown(
+        """
+        <div style="background-color: #F0FDF4; padding: 14px 18px; border-radius: 10px; border: 2px solid #22C55E; margin-bottom: 18px;">
+            <h4 style="margin: 0; color: #15803D;">👨‍💻 Panel de Administración (Solo Visible para Ti)</h4>
+            <p style="margin: 4px 0 10px 0; color: #374151; font-size: 0.94rem;">
+                Publica comunicados en la galería o actualiza la foto del menú lateral arriba de CALANDRIAS.
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
-    if archivo_img:
-      # Leer bytes y almacenar en la sesión
-      img_bytes = archivo_img.read()
-      st.session_state.imagenes_galeria.append(img_bytes)
-      st.success("¡Imagen agregada a la galería con éxito!")
-      st.rerun()
 
-  # Mostrar la Galería de fotos (Visible para todos los vecinos)
+    col_up1, col_up2 = st.columns(2)
+    with col_up1:
+      st.markdown("##### 📤 Subir Imagen a la Galería")
+      archivo_galeria = st.file_uploader(
+          "Selecciona plano o comunicado (JPG/PNG):",
+          type=["png", "jpg", "jpeg"],
+          key="up_galeria_box",
+      )
+      if archivo_galeria is not None:
+        if st.button("➕ Publicar en Galería", type="primary", use_container_width=True):
+          st.session_state.imagenes_galeria.append(archivo_galeria.getvalue())
+          st.success("¡Imagen publicada con éxito!")
+          st.rerun()
+
+    with col_up2:
+      st.markdown("##### 🖼️ Cambiar Imagen del Menú Lateral")
+      archivo_logo = st.file_uploader(
+          "Foto arriba de CALANDRIAS (JPG/PNG):",
+          type=["png", "jpg", "jpeg"],
+          key="up_logo_sidebar_box",
+      )
+      if archivo_logo is not None:
+        if st.button("💾 Guardar Logo en Menú", type="primary", use_container_width=True):
+          st.session_state.sidebar_logo_bytes = archivo_logo.getvalue()
+          st.success("¡Logo del menú lateral actualizado!")
+          st.rerun()
+
+    st.markdown("---")
+
+  # TÍTULO: GALERÍA DEL BARRIO (Visible para todos)
   st.markdown("### 📸 Galería del Barrio")
   if st.session_state.imagenes_galeria:
-    # Mostramos las imágenes de la sesión de más nuevas a más viejas
     for i, img in enumerate(reversed(st.session_state.imagenes_galeria)):
-      st.image(img, caption=f"Comunicado / Plano Nº {len(st.session_state.imagenes_galeria) - i}", use_column_width=True)
+      st.image(
+          img,
+          caption=f"Comunicado / Plano Nº {len(st.session_state.imagenes_galeria) - i}",
+          use_container_width=True,
+      )
       st.markdown("---")
   else:
     st.info("Aún no se han cargado imágenes en la galería para exhibir.")
