@@ -1,3 +1,4 @@
+
 import io
 import json
 from fpdf import FPDF
@@ -376,40 +377,35 @@ if st.session_state.pagina_actual == "🔍 Consultas":
       st.rerun()
 
   alarma_activa = st.session_state.filtro_alarma_activo
-  df_resultado = df_base.copy()
-  criterio_activo = ""
 
-  # FILTRADO DE DATOS POR ALARMA
+  # 1. EL RESULTADO DE LA ALARMA QUEDA A CONTINUACIÓN DEL CAMPO DE INGRESO
   if alarma_activa:
-    criterio_activo = f"Alarma Nº {alarma_activa}"
+    st.markdown(f"### Vecino de la Alarma Nº {alarma_activa}")
+    df_alarma = df_base.copy()
 
-    # Búsqueda coincidente comparando valores limpios
-    lotes_con_alarma = df_resultado[
-        (df_resultado["ALARMA_1"] == alarma_activa)
-        | (df_resultado["ALARMA_2"] == alarma_activa)
-        | (df_resultado["ALARMA_3"] == alarma_activa)
-        | (df_resultado["ALARMA_4"] == alarma_activa)
+    # Filtramos la alarma de forma exacta
+    lotes_con_alarma = df_alarma[
+        (df_alarma["ALARMA_1"] == alarma_activa)
+        | (df_alarma["ALARMA_2"] == alarma_activa)
+        | (df_alarma["ALARMA_3"] == alarma_activa)
+        | (df_alarma["ALARMA_4"] == alarma_activa)
     ]
 
     if not lotes_con_alarma.empty:
-      # Obtenemos todos los contactos (principal y secundario) del lote encontrado
-      filtro_lotes = pd.Series(False, index=df_resultado.index)
+      filtro_lotes = pd.Series(False, index=df_alarma.index)
       for _, fila_lote in lotes_con_alarma.iterrows():
         mz = fila_lote["MANZANA"]
         sec = fila_lote["SECTOR"]
         lt = fila_lote["LOTE"]
         filtro_lotes |= (
-            (df_resultado["MANZANA"] == mz)
-            & (df_resultado["SECTOR"] == sec)
-            & (df_resultado["LOTE"] == lt)
+            (df_alarma["MANZANA"] == mz)
+            & (df_alarma["SECTOR"] == sec)
+            & (df_alarma["LOTE"] == lt)
         )
-      df_resultado = df_resultado[filtro_lotes]
+      df_alarma_resultado = df_alarma[filtro_lotes]
+      st.dataframe(df_alarma_resultado, use_container_width=True, hide_index=True)
     else:
-      df_resultado = pd.DataFrame(columns=COLUMNAS_BD)
-
-    if st.button("🔄 Ver Todos los Lotes"):
-      st.session_state.filtro_alarma_activo = ""
-      st.rerun()
+      st.warning("No hay datos para esa seleccion")
 
   # SECCIÓN DE UBICACIÓN (SIEMPRE VISIBLE ABAJO)
   st.markdown("---")
@@ -420,8 +416,11 @@ if st.session_state.pagina_actual == "🔍 Consultas":
     tipo_ubicacion = st.radio(
         "Seleccione Criterio de visualización:",
         ["Mostrar Todos", "Por Manzana", "Por Lote Específico"],
-        index=0 if alarma_activa else 0,
+        index=0,
     )
+
+  df_resultado = df_base.copy()
+  criterio_activo = ""
 
   with col_filtros:
     if tipo_ubicacion == "Por Manzana":
@@ -433,12 +432,11 @@ if st.session_state.pagina_actual == "🔍 Consultas":
       with cs:
         s_sel = st.selectbox("Sector (A/B):", ["A", "B"], key="c_sec")
 
-      if not alarma_activa:
-        criterio_activo = f"Manzana {m_sel} Sector {s_sel}"
-        df_resultado = df_resultado[
-            (df_resultado["MANZANA"] == str(m_sel))
-            & (df_resultado["SECTOR"] == str(s_sel))
-        ]
+      criterio_activo = f"Manzana {m_sel} Sector {s_sel}"
+      df_resultado = df_resultado[
+          (df_resultado["MANZANA"] == str(m_sel))
+          & (df_resultado["SECTOR"] == str(s_sel))
+      ]
 
     elif tipo_ubicacion == "Por Lote Específico":
       cm, cs, cl = st.columns(3)
@@ -453,24 +451,23 @@ if st.session_state.pagina_actual == "🔍 Consultas":
             "Lote:", [str(i) for i in range(1, 25)], key="l_lot"
         )
 
-      if not alarma_activa:
-        criterio_activo = f"Manzana {m_sel}{s_sel} - Lote {l_sel}"
-        df_resultado = df_resultado[
-            (df_resultado["MANZANA"] == str(m_sel))
-            & (df_resultado["SECTOR"] == str(s_sel))
-            & (df_resultado["LOTE"] == str(l_sel))
-        ]
+      criterio_activo = f"Manzana {m_sel}{s_sel} - Lote {l_sel}"
+      df_resultado = df_resultado[
+          (df_resultado["MANZANA"] == str(m_sel))
+          & (df_resultado["SECTOR"] == str(s_sel))
+          & (df_resultado["LOTE"] == str(l_sel))
+      ]
     else:
-      if not alarma_activa:
-        criterio_activo = "Base Completa"
+      criterio_activo = "Base Completa"
 
-  # Visualización directa de los datos encontrados
+  # Visualización de resultados de ubicación
   st.markdown("---")
   st.markdown(f"### Resultados ({criterio_activo})")
   if not df_resultado.empty:
     st.dataframe(df_resultado, use_container_width=True, hide_index=True)
   else:
-    st.warning("No se encontraron registros coincidentes.")
+    # MENSAJE DE ADVERTENCIA SOLICITADO
+    st.warning("No hay datos para esa seleccion")
 
   # Descargas organizadas para celular
   st.markdown("---")
