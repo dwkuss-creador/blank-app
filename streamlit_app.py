@@ -6,7 +6,7 @@ import requests
 import streamlit as st
 
 # ---------------------------------------------------------
-# CONFIGURACIÓN DE PÁGINA
+# CONFIGURACIÓN DE PÁGINA Y OPTIMIZACIÓN RESPONSIVA
 # ---------------------------------------------------------
 st.set_page_config(
     page_title="APP VECINOS CALANDRIAS",
@@ -15,11 +15,65 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+# Estilos CSS optimizados para dispositivos móviles
 st.markdown(
     """
 <style>
-    .main-header { font-size: 2.1rem; font-weight: 700; color: #1E3A8A; margin-bottom: 0.2rem; }
-    .sub-header { color: #4B5563; font-size: 1.05rem; margin-bottom: 1.2rem; }
+    .main-header {
+        font-size: 1.85rem;
+        font-weight: 700;
+        color: #1E3A8A;
+        margin-bottom: 0.2rem;
+    }
+    .sub-header {
+        color: #4B5563;
+        font-size: 1rem;
+        margin-bottom: 1rem;
+    }
+    
+    /* Tarjeta destacada de Alarma */
+    .alarma-card {
+        background-color: #EFF6FF;
+        padding: 14px 16px;
+        border-radius: 10px;
+        border: 2px solid #3B82F6;
+        border-left: 8px solid #1D4ED8;
+        margin-bottom: 12px;
+    }
+    
+    /* Opciones del menú lateral más grandes */
+    [data-testid="stSidebar"] .stRadio label {
+        font-size: 1.15rem !important;
+        font-weight: 600 !important;
+        padding-top: 6px !important;
+        padding-bottom: 6px !important;
+        cursor: pointer;
+    }
+    
+    /* Campo de entrada de alarma llamativo */
+    div[data-testid="stTextInput"]:has(input[aria-label="input_alarma_box"]) input {
+        border: 2.5px solid #2563EB !important;
+        background-color: #F8FAFC !important;
+        font-size: 1.15rem !important;
+        font-weight: 600 !important;
+        color: #0F172A !important;
+        border-radius: 8px !important;
+    }
+
+    /* Botones amigables para pantallas táctiles */
+    .stButton>button {
+        border-radius: 8px;
+        font-weight: 600;
+    }
+    
+    @media (max-width: 768px) {
+        .main-header { font-size: 1.5rem !important; }
+        .sub-header { font-size: 0.92rem !important; }
+        .stButton>button {
+            padding-top: 10px !important;
+            padding-bottom: 10px !important;
+        }
+    }
 </style>
 """,
     unsafe_allow_html=True,
@@ -41,7 +95,7 @@ COLUMNAS_BD = [
 
 
 # ---------------------------------------------------------
-# CONEXIÓN DIRECTA CON GOOGLE SHEETS (VÍA GOOGLE APPS SCRIPT)
+# CONEXIÓN DIRECTA CON GOOGLE SHEETS
 # ---------------------------------------------------------
 def get_api_url():
   return st.secrets.get("SHEETS_API_URL", "")
@@ -78,7 +132,6 @@ def guardar_datos(df):
   api_url = get_api_url()
   if api_url:
     try:
-      # Convertir DataFrame a lista de listas (incluyendo cabecera)
       matriz = [COLUMNAS_BD] + df.astype(str).values.tolist()
       payload = {"action": "update_all", "data": matriz}
       requests.post(api_url, json=payload, timeout=10)
@@ -171,8 +224,15 @@ def exportar_pdf(df, titulo="Reporte Vecinos - Calandrias"):
 
 
 # ---------------------------------------------------------
-# NAVEGACIÓN Y ESTADO
+# ESTADO DE NAVEGACIÓN Y VARIABLES
 # ---------------------------------------------------------
+OPCIONES_MENU = [
+    "🔍 Consultas",
+    "ℹ️ Datos Útiles",
+    "🖼️ Galería e Imágenes",
+    "📝 Alta / Modificación",
+]
+
 if "pagina_actual" not in st.session_state:
   st.session_state.pagina_actual = "🔍 Consultas"
 
@@ -182,89 +242,103 @@ if "precarga" not in st.session_state:
 if "mostrar_dialogo_otro_lote" not in st.session_state:
   st.session_state.mostrar_dialogo_otro_lote = False
 
+if "filtro_alarma_texto" not in st.session_state:
+  st.session_state.filtro_alarma_texto = ""
+
+# ---------------------------------------------------------
+# BARRA LATERAL (SIDEBAR)
+# ---------------------------------------------------------
 with st.sidebar:
-  st.image("https://img.icons8.com/fluency/96/neighborhood.png", width=70)
-  st.title("APP CALANDRIAS")
+  st.image("https://img.icons8.com/fluency/96/neighborhood.png", width=65)
+  st.title("CALANDRIAS")
   st.caption("Padrón Vecinal y Alarmas")
 
-  opciones_menu = [
-      "🔍 Consultas",
-      "📝 Alta / Modificación",
-      "ℹ️ Datos Útiles",
-      "🖼️ Galería e Imágenes",
-  ]
   pagina = st.radio(
-      "Navegación:",
-      opciones_menu,
-      index=opciones_menu.index(st.session_state.pagina_actual),
+      "Secciones:",
+      OPCIONES_MENU,
+      index=OPCIONES_MENU.index(st.session_state.pagina_actual),
   )
   st.session_state.pagina_actual = pagina
   st.markdown("---")
   if get_api_url():
-    st.success("🟢 Conectado con Google Sheets")
+    st.success("🟢 Google Sheets Conectado")
   else:
     st.info("🟡 Modo local de prueba")
 
 df_base = cargar_datos()
 
 # =========================================================
-# HOJA 1: CONSULTAS
+# SECCIÓN 1: CONSULTAS
 # =========================================================
 if st.session_state.pagina_actual == "🔍 Consultas":
   st.markdown(
-      '<div class="main-header">🔍 Consulta de Base de Datos</div>',
+      '<div class="main-header">🔍 Consulta de Vecinos</div>',
       unsafe_allow_html=True,
   )
   st.markdown(
-      '<div class="sub-header">Búsqueda rápida por Alarma (prioridad) o por'
-      " Manzana / Lote.</div>",
+      '<div class="sub-header">Búsqueda rápida por Alarma o Ubicación.</div>',
       unsafe_allow_html=True,
   )
 
+  # Tarjeta de Alarma Prioritaria
   st.markdown(
       """
-    <div style="background-color: #EFF6FF; padding: 15px; border-radius: 8px; border-left: 6px solid #3B82F6; margin-bottom: 20px;">
-        <h4 style="margin: 0; color: #1E40AF;">🚨 Búsqueda Prioritaria por Número de Alarma</h4>
-        <p style="margin: 5px 0 0 0; color: #4B5563; font-size: 0.95rem;">Ingrese el número de alarma disparada para ubicar inmediatamente al vecino responsable.</p>
+    <div class="alarma-card">
+        <h4 style="margin: 0; color: #1E40AF; font-size: 1.15rem;">🚨 Búsqueda Prioritaria por Número de Alarma</h4>
+        <p style="margin: 4px 0 0 0; color: #374151; font-size: 0.94rem;">
+            Ingrese el número de alarma disparada para ubicar inmediatamente al vecino correspondiente.
+        </p>
     </div>
     """,
       unsafe_allow_html=True,
   )
 
-  col_al1, col_al2 = st.columns(2)
-  with col_al1:
-    alarma_input = st.text_input(
-        "Número de Alarma:",
-        placeholder="Ingrese el número de alarma y presione Enter (ej: 104)",
+  # Fila de Alarma: Campo llamativo + Botones compactos
+  c_input, c_btn, c_clear = st.columns([5, 1.2, 1.2])
+  with c_input:
+    alarma_ingresada = st.text_input(
+        "input_alarma_box",
+        value=st.session_state.filtro_alarma_texto,
+        placeholder="Ej: 104 (Escribe el número aquí)",
         label_visibility="collapsed",
     ).strip()
-  with col_al2:
-    buscar_alarma_btn = st.button(
-        "🔍 Buscar Alarma", type="primary", use_container_width=True
-    )
+  with c_btn:
+    if st.button("🔍 Buscar", type="primary", use_container_width=True):
+      st.session_state.filtro_alarma_texto = alarma_ingresada
+      st.rerun()
+  with c_clear:
+    if st.button("✖ Limpiar", use_container_width=True):
+      st.session_state.filtro_alarma_texto = ""
+      st.rerun()
 
+  alarma_activa = st.session_state.filtro_alarma_texto
   df_resultado = df_base.copy()
   criterio_activo = ""
 
-  if alarma_input:
-    criterio_activo = f"Alarma: {alarma_input}"
+  # Si busca por alarma, se ocultan las opciones de manzana/lote
+  if alarma_activa:
+    criterio_activo = f"Alarma Nº {alarma_activa}"
     condicion = (
-        (df_resultado["ALARMA_1"] == alarma_input)
-        | (df_resultado["ALARMA_2"] == alarma_input)
-        | (df_resultado["ALARMA_3"] == alarma_input)
-        | (df_resultado["ALARMA_4"] == alarma_input)
+        (df_resultado["ALARMA_1"] == alarma_activa)
+        | (df_resultado["ALARMA_2"] == alarma_activa)
+        | (df_resultado["ALARMA_3"] == alarma_activa)
+        | (df_resultado["ALARMA_4"] == alarma_activa)
     )
     df_resultado = df_resultado[condicion]
+    st.info(
+        f"Filtrando exclusivamente por {criterio_activo}. Presione 'Limpiar'"
+        " para ver otras opciones de búsqueda."
+    )
 
   else:
+    # Solo se muestran Manzana / Lote si NO hay búsqueda de alarma activa
     st.markdown("---")
-    st.markdown("#### 📍 Búsqueda por Ubicación (Manzana o Lote)")
+    st.markdown("#### 📍 O buscar por Ubicación:")
 
-    col_tipo, col_filtros = st.columns(2)
+    col_tipo, col_filtros = st.columns([1.5, 3])
     with col_tipo:
       tipo_ubicacion = st.radio(
-          "Seleccione criterio:",
-          ["Mostrar Todos", "Por Manzana", "Por Lote Específico"],
+          "Criterio:", ["Mostrar Todos", "Por Manzana", "Por Lote Específico"]
       )
 
     with col_filtros:
@@ -276,7 +350,6 @@ if st.session_state.pagina_actual == "🔍 Consultas":
           )
         with cs:
           s_sel = st.selectbox("Sector (A/B):", ["A", "B"], key="c_sec")
-
         criterio_activo = f"Manzana {m_sel} Sector {s_sel}"
         df_resultado = df_resultado[
             (df_resultado["MANZANA"] == m_sel)
@@ -295,7 +368,6 @@ if st.session_state.pagina_actual == "🔍 Consultas":
           l_sel = st.selectbox(
               "Lote:", [str(i) for i in range(1, 25)], key="l_lot"
           )
-
         criterio_activo = f"Manzana {m_sel}{s_sel} - Lote {l_sel}"
         df_resultado = df_resultado[
             (df_resultado["MANZANA"] == m_sel)
@@ -305,19 +377,21 @@ if st.session_state.pagina_actual == "🔍 Consultas":
       else:
         criterio_activo = "Base Completa"
 
+  # Resultados
   st.markdown("---")
   st.markdown(f"### Resultados ({criterio_activo})")
   if not df_resultado.empty:
     st.dataframe(df_resultado, use_container_width=True, hide_index=True)
   else:
-    st.warning("No se encontraron registros para la búsqueda ingresada.")
+    st.warning("No se encontraron registros coincidentes.")
 
+  # Descargas organizadas para celular
   st.markdown("---")
   st.markdown("### 📥 Descargar Reportes")
-  d1, d2, d3, d4 = st.columns(4)
-  with d1:
+  d_row1_col1, d_row1_col2 = st.columns(2)
+  with d_row1_col1:
     st.download_button(
-        label="📊 Consulta Actual (Excel)",
+        label="📊 Consulta (Excel)",
         data=exportar_excel(df_resultado),
         file_name="consulta_vecinos.xlsx",
         mime=(
@@ -325,9 +399,9 @@ if st.session_state.pagina_actual == "🔍 Consultas":
         ),
         use_container_width=True,
     )
-  with d2:
+  with d_row1_col2:
     st.download_button(
-        label="📄 Consulta Actual (PDF)",
+        label="📄 Consulta (PDF)",
         data=exportar_pdf(
             df_resultado, f"Consulta Vecinos Calandrias - {criterio_activo}"
         ),
@@ -335,7 +409,9 @@ if st.session_state.pagina_actual == "🔍 Consultas":
         mime="application/pdf",
         use_container_width=True,
     )
-  with d3:
+
+  d_row2_col1, d_row2_col2 = st.columns(2)
+  with d_row2_col1:
     st.download_button(
         label="💾 Padrón Completo (Excel)",
         data=exportar_excel(df_base),
@@ -345,7 +421,7 @@ if st.session_state.pagina_actual == "🔍 Consultas":
         ),
         use_container_width=True,
     )
-  with d4:
+  with d_row2_col2:
     st.download_button(
         label="📑 Padrón Completo (PDF)",
         data=exportar_pdf(
@@ -357,11 +433,66 @@ if st.session_state.pagina_actual == "🔍 Consultas":
     )
 
 # =========================================================
-# HOJA 2: ALTA / MODIFICACIÓN
+# SECCIÓN 2: DATOS ÚTILES
+# =========================================================
+elif st.session_state.pagina_actual == "ℹ️ Datos Útiles":
+  st.markdown(
+      '<div class="main-header">ℹ️ Directorio y Datos Útiles</div>',
+      unsafe_allow_html=True,
+  )
+  st.markdown(
+      '<div class="sub-header">Información de contacto, emergencias y servicios'
+      " del barrio.</div>",
+      unsafe_allow_html=True,
+  )
+
+  col1, col2 = st.columns(2)
+  with col1:
+    st.markdown("### 🚨 Teléfonos de Emergencia")
+    st.info("""
+        * **Guardia / Portería Calandrias:** (A completar)
+        * **Policía / Comisaría:** 911 / (A completar)
+        * **Bomberos:** 100 / (A completar)
+        * **Emergencias Médicas / Ambulancia:** 107
+        """)
+  with col2:
+    st.markdown("### 🏢 Administración y Servicios")
+    st.info("""
+        * **Administración del Barrio:** (A completar)
+        * **Mantenimiento General:** (A completar)
+        * **Recolección de Residuos:** Días y horarios a definir
+        * **Comisión Vecinal:** (A completar)
+        """)
+
+# =========================================================
+# SECCIÓN 3: GALERÍA E IMÁGENES
+# =========================================================
+elif st.session_state.pagina_actual == "🖼️ Galería e Imágenes":
+  st.markdown(
+      '<div class="main-header">🖼️ Galería y Comunicados</div>',
+      unsafe_allow_html=True,
+  )
+  st.markdown(
+      '<div class="sub-header">Planos del barrio, avisos importantes y'
+      " fotografías.</div>",
+      unsafe_allow_html=True,
+  )
+
+  st.write("Sube imágenes o comunicados para visualizarlos aquí:")
+  archivo_img = st.file_uploader(
+      "Subir una imagen o aviso (JPG / PNG):", type=["png", "jpg", "jpeg"]
+  )
+  if archivo_img:
+    st.image(archivo_img, caption="Imagen cargada", use_column_width=True)
+  else:
+    st.info("Aún no se han cargado imágenes para exhibir.")
+
+# =========================================================
+# SECCIÓN 4: ALTA / MODIFICACIÓN
 # =========================================================
 elif st.session_state.pagina_actual == "📝 Alta / Modificación":
   st.markdown(
-      '<div class="main-header">📝 Registro y Modificación de Datos</div>',
+      '<div class="main-header">📝 Registro / Modificación</div>',
       unsafe_allow_html=True,
   )
 
@@ -370,11 +501,13 @@ elif st.session_state.pagina_actual == "📝 Alta / Modificación":
     st.markdown("#### ¿Desea dar de alta otro lote con los mismos contactos?")
     col_si, col_no = st.columns(2)
     with col_si:
-      if st.button("👍 SÍ, cargar otro lote con los mismos datos"):
+      if st.button(
+          "👍 SÍ, cargar otro lote", type="primary", use_container_width=True
+      ):
         st.session_state.mostrar_dialogo_otro_lote = False
         st.rerun()
     with col_no:
-      if st.button("❌ NO, ir a Consultas"):
+      if st.button("❌ NO, ir a Consultas", use_container_width=True):
         st.session_state.precarga = None
         st.session_state.mostrar_dialogo_otro_lote = False
         st.session_state.pagina_actual = "🔍 Consultas"
@@ -382,7 +515,7 @@ elif st.session_state.pagina_actual == "📝 Alta / Modificación":
     st.stop()
 
   modo = st.radio(
-      "Seleccione una acción:",
+      "Acción a realizar:",
       ["Alta de vecino", "Modificación de datos"],
       horizontal=True,
   )
@@ -419,20 +552,18 @@ elif st.session_state.pagina_actual == "📝 Alta / Modificación":
     ).strip()
 
     st.markdown("##### Números de Alarma (Hasta 4 números por lote)")
-    a1, a2, a3, a4 = st.columns(4)
-    with a1:
+    al_c1, al_c2 = st.columns(2)
+    with al_c1:
       alarma1 = st.text_input(
           "Alarma 1", value=str(p.get("alarma1", ""))
       ).strip()
-    with a2:
-      alarma2 = st.text_input(
-          "Alarma 2", value=str(p.get("alarma2", ""))
-      ).strip()
-    with a3:
       alarma3 = st.text_input(
           "Alarma 3", value=str(p.get("alarma3", ""))
       ).strip()
-    with a4:
+    with al_c2:
+      alarma2 = st.text_input(
+          "Alarma 2", value=str(p.get("alarma2", ""))
+      ).strip()
       alarma4 = st.text_input(
           "Alarma 4", value=str(p.get("alarma4", ""))
       ).strip()
@@ -450,14 +581,14 @@ elif st.session_state.pagina_actual == "📝 Alta / Modificación":
       c2_ap_col, c2_nom_col = st.columns(2)
       with c2_ap_col:
         c2_apellido = st.text_input(
-            "APELLIDO (Segundo Contacto) *", value=p.get("c2_apellido", "")
+            "APELLIDO (2º Contacto) *", value=p.get("c2_apellido", "")
         ).strip()
       with c2_nom_col:
         c2_nombre = st.text_input(
-            "NOMBRE (Segundo Contacto) *", value=p.get("c2_nombre", "")
+            "NOMBRE (2º Contacto) *", value=p.get("c2_nombre", "")
         ).strip()
       c2_celular = st.text_input(
-          "CELULAR (Segundo Contacto) *",
+          "CELULAR (2º Contacto) *",
           value=p.get("c2_celular", ""),
           placeholder="Sin guiones ni espacios",
           key="c2_cel",
@@ -466,14 +597,14 @@ elif st.session_state.pagina_actual == "📝 Alta / Modificación":
     if st.button("💾 Grabar Alta", type="primary", use_container_width=True):
       valido_c1, msg_c1 = validar_celular(celular)
       if not apellido or not nombre:
-        st.error("Por favor, ingrese Apellido y Nombre del contacto principal.")
+        st.error("Ingrese Apellido y Nombre del contacto principal.")
       elif not valido_c1:
         st.error(f"Contacto Principal: {msg_c1}")
       else:
         error_c2 = False
         if otro_contacto == "Si":
           if not c2_apellido or not c2_nombre:
-            st.error("Por favor, ingrese Apellido y Nombre del segundo contacto.")
+            st.error("Ingrese Apellido y Nombre del segundo contacto.")
             error_c2 = True
           else:
             valido_c2, msg_c2 = validar_celular(c2_celular)
@@ -567,7 +698,7 @@ elif st.session_state.pagina_actual == "📝 Alta / Modificación":
         tipo = row.get("TIPO_CONTACTO", "Contacto")
         st.markdown(f"#### Editando {tipo}: {row.get('APELLIDO', '')}")
 
-        c_ap, c_nom, c_cel = st.columns(3)
+        c_ap, c_nom = st.columns(2)
         with c_ap:
           nuevo_ap = st.text_input(
               f"Apellido ({tipo})", value=row.get("APELLIDO", ""), key=f"ap_{idx}"
@@ -576,32 +707,36 @@ elif st.session_state.pagina_actual == "📝 Alta / Modificación":
           nuevo_nom = st.text_input(
               f"Nombre ({tipo})", value=row.get("NOMBRE", ""), key=f"nom_{idx}"
           )
-        with c_cel:
-          nuevo_cel = st.text_input(
-              f"Celular ({tipo})",
-              value=row.get("CELULAR", ""),
-              key=f"cel_{idx}",
-          )
+
+        nuevo_cel = st.text_input(
+            f"Celular ({tipo})", value=row.get("CELULAR", ""), key=f"cel_{idx}"
+        )
 
         a1, a2, a3, a4 = row.get("ALARMA_1", ""), "", "", ""
         if tipo == "Principal":
-          st.caption("Alarmas del Lote")
-          al1_c, al2_c, al3_c, al4_c = st.columns(4)
+          st.caption("Alarmas del Lote (2x2)")
+          al1_c, al2_c = st.columns(2)
           with al1_c:
             a1 = st.text_input(
-                "Alarma 1", value=str(row.get("ALARMA_1", "")), key=f"al1_{idx}"
+                "Alarma 1",
+                value=str(row.get("ALARMA_1", "")),
+                key=f"al1_{idx}",
+            )
+            a3 = st.text_input(
+                "Alarma 3",
+                value=str(row.get("ALARMA_3", "")),
+                key=f"al3_{idx}",
             )
           with al2_c:
             a2 = st.text_input(
-                "Alarma 2", value=str(row.get("ALARMA_2", "")), key=f"al2_{idx}"
+                "Alarma 2",
+                value=str(row.get("ALARMA_2", "")),
+                key=f"al2_{idx}",
             )
-          with al3_c:
-            a3 = st.text_input(
-                "Alarma 3", value=str(row.get("ALARMA_3", "")), key=f"al3_{idx}"
-            )
-          with al4_c:
             a4 = st.text_input(
-                "Alarma 4", value=str(row.get("ALARMA_4", "")), key=f"al4_{idx}"
+                "Alarma 4",
+                value=str(row.get("ALARMA_4", "")),
+                key=f"al4_{idx}",
             )
 
         filas_editadas.append({
@@ -619,7 +754,9 @@ elif st.session_state.pagina_actual == "📝 Alta / Modificación":
             "ALARMA_4": a4,
         })
 
-      if st.button("💾 Guardar Modificaciones", type="primary"):
+      if st.button(
+          "💾 Guardar Modificaciones", type="primary", use_container_width=True
+      ):
         error = False
         for f in filas_editadas:
           valido, msg = validar_celular(f["CELULAR"])
@@ -638,58 +775,3 @@ elif st.session_state.pagina_actual == "📝 Alta / Modificación":
           guardar_datos(df_modificado)
           st.success("¡Datos actualizados con éxito!")
           st.rerun()
-
-# =========================================================
-# HOJA 3: DATOS ÚTILES
-# =========================================================
-elif st.session_state.pagina_actual == "ℹ️ Datos Útiles":
-  st.markdown(
-      '<div class="main-header">ℹ️ Directorio y Datos Útiles</div>',
-      unsafe_allow_html=True,
-  )
-  st.markdown(
-      '<div class="sub-header">Información de contacto, emergencias y servicios'
-      " del barrio.</div>",
-      unsafe_allow_html=True,
-  )
-
-  col1, col2 = st.columns(2)
-  with col1:
-    st.markdown("### 🚨 Teléfonos de Emergencia")
-    st.info("""
-        * **Guardia / Portería Calandrias:** (A completar)
-        * **Policía / Comisaría:** 911 / (A completar)
-        * **Bomberos:** 100 / (A completar)
-        * **Emergencias Médicas / Ambulancia:** 107
-        """)
-  with col2:
-    st.markdown("### 🏢 Administración y Servicios")
-    st.info("""
-        * **Administración del Barrio:** (A completar)
-        * **Mantenimiento General:** (A completar)
-        * **Recolección de Residuos:** Días y horarios a definir
-        * **Comisión Vecinal:** (A completar)
-        """)
-
-# =========================================================
-# HOJA 4: GALERÍA E IMÁGENES
-# =========================================================
-elif st.session_state.pagina_actual == "🖼️ Galería e Imágenes":
-  st.markdown(
-      '<div class="main-header">🖼️ Galería y Comunicados</div>',
-      unsafe_allow_html=True,
-  )
-  st.markdown(
-      '<div class="sub-header">Planos del barrio, avisos importantes y'
-      " fotografías.</div>",
-      unsafe_allow_html=True,
-  )
-
-  st.write("Sube imágenes o comunicados para visualizarlos aquí:")
-  archivo_img = st.file_uploader(
-      "Subir una imagen o aviso (JPG / PNG):", type=["png", "jpg", "jpeg"]
-  )
-  if archivo_img:
-    st.image(archivo_img, caption="Imagen cargada", use_column_width=True)
-  else:
-    st.info("Aún no se han cargado imágenes para exhibir.")
