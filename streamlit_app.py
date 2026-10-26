@@ -16,6 +16,10 @@ st.set_page_config(
     initial_sidebar_state="collapsed",  # 📱 Menú colapsado en móviles
 )
 
+# Carpeta física persistente para la galería
+CARPETA_GALERIA = "galeria_fotos"
+os.makedirs(CARPETA_GALERIA, exist_ok=True)
+
 # Estilos CSS: Bloqueo de oscurecimiento + Adaptabilidad móvil
 st.markdown(
     """
@@ -125,6 +129,27 @@ def normalizar_valor(val):
   return s
 
 
+def ordenar_padron(df):
+  """Ordena estrictamente: Manzana 15 A, 15 B, 16 A, 16 B... y por número de Lote."""
+  if df.empty:
+    return df
+
+  df_ord = df.copy()
+  # Creamos columnas auxiliares para ordenamiento numérico
+  df_ord["_mz_num"] = pd.to_numeric(df_ord["MANZANA"], errors="coerce").fillna(999)
+  df_ord["_sec_str"] = df_ord["SECTOR"].astype(str).str.upper()
+  df_ord["_lot_num"] = pd.to_numeric(df_ord["LOTE"], errors="coerce").fillna(999)
+
+  df_ord = df_ord.sort_values(
+      by=["_mz_num", "_sec_str", "_lot_num", "TIPO_CONTACTO"],
+      ascending=[True, True, True, False]
+  )
+
+  # Eliminamos las columnas auxiliares y devolvemos las oficiales
+  df_ord = df_ord.drop(columns=["_mz_num", "_sec_str", "_lot_num"])
+  return df_ord
+
+
 @st.cache_data(ttl=60, show_spinner=False)
 def obtener_datos_remotos(api_url):
   if not api_url:
@@ -156,6 +181,7 @@ def cargar_datos():
     df = df.drop_duplicates(
         subset=["MANZANA", "SECTOR", "LOTE", "TIPO_CONTACTO"], keep="last"
     )
+    df = ordenar_padron(df)
     return df.fillna("")
 
   if "db_local" not in st.session_state:
@@ -189,7 +215,8 @@ def guardar_datos_completos(df):
   api_url = get_api_url()
   if api_url:
     try:
-      matriz = [COLUMNAS_BD] + df.astype(str).values.tolist()
+      df_ordenado = ordenar_padron(df)
+      matriz = [COLUMNAS_BD] + df_ordenado.astype(str).values.tolist()
       payload = {"action": "update_all", "data": matriz}
       resp = requests.post(api_url, json=payload, timeout=30)
       if resp.status_code == 200:
@@ -215,8 +242,7 @@ def validar_celular(celular):
   if not cel.isdigit():
     return (
         False,
-        "Error: El celular solo debe contener números (sin símbolos ni"
-        " letras).",
+        "Error: El celular solo debe contener números (sin símbolos ni letras).",
     )
   if len(cel) < 8 or len(cel) > 15:
     return False, "Error: El celular debe tener entre 8 y 15 dígitos numéricos."
@@ -227,13 +253,15 @@ def validar_celular(celular):
 # EXPORTACIÓN
 # ---------------------------------------------------------
 def exportar_excel(df):
+  df_salida = ordenar_padron(df)
   output = io.BytesIO()
   with pd.ExcelWriter(output, engine="openpyxl") as writer:
-    df.to_excel(writer, index=False, sheet_name="Vecinos")
+    df_salida.to_excel(writer, index=False, sheet_name="Vecinos")
   return output.getvalue()
 
 
 def exportar_pdf(df, titulo="Reporte Vecinos - Calandrias"):
+  df_salida = ordenar_padron(df)
   pdf = FPDF(orientation="L", unit="mm", format="A4")
   pdf.add_page()
   pdf.set_font("Helvetica", "B", 14)
@@ -262,7 +290,7 @@ def exportar_pdf(df, titulo="Reporte Vecinos - Calandrias"):
   pdf.ln()
 
   pdf.set_font("Helvetica", "", 7)
-  for _, row in df.iterrows():
+  for _, row in df_salida.iterrows():
     vals = [
         str(row.get("MANZANA", "")),
         str(row.get("SECTOR", "")),
@@ -309,36 +337,20 @@ if "mostrar_dialogo_otro_lote" not in st.session_state:
 if "filtro_alarma_activo" not in st.session_state:
   st.session_state.filtro_alarma_activo = ""
 
-if "imagenes_galeria" not in st.session_state:
-  st.session_state.imagenes_galeria = []
-
-if "sidebar_logo_bytes" not in st.session_state:
-  st.session_state.sidebar_logo_bytes = None
-
 
 # ---------------------------------------------------------
-# BARRA LATERAL (SIDEBAR) CON IMAGEN SUPERIOR PERSONALIZADA
+# BARRA LATERAL (SIDEBAR) CON IMAGEN PERSISTENTE EN DISCO
 # ---------------------------------------------------------
 with st.sidebar:
-  # Imagen en el sidebar arriba de CALANDRIAS
-  logo_colocado = False
-  if st.session_state.sidebar_logo_bytes:
-    st.image(st.session_state.sidebar_logo_bytes, use_container_width=True)
-    logo_colocado = True
-  else:
-    for archivo_candidato in [
-        "logo.png",
-        "logo.jpg",
-        "logo.jpeg",
-        "calandrias.png",
-        "calandrias.jpg",
-    ]:
-      if os.path.exists(archivo_candidato):
-        st.image(archivo_candidato, use_container_width=True)
-        logo_colocado = True
-        break
+  logo_encontrado = None
+  for candidato in ["logo.png", "logo.jpg", "logo.jpeg", "calandrias.png", "calandrias.jpg"]:
+    if os.path.exists(candidato):
+      logo_encontrado = candidato
+      break
 
-  if not logo_colocado:
+  if logo_encontrado:
+    st.image(logo_encontrado, use_container_width=True)
+  else:
     st.image("https://img.icons8.com/fluency/96/neighborhood.png", width=70)
 
   st.title("CALANDRIAS")
@@ -395,9 +407,7 @@ if st.session_state.pagina_actual == "🔍 Consultas":
     with c_input:
       alarma_escrita = st.text_input(
           "box_alarma",
-          placeholder=(
-              "Escribe el número de alarma y presiona Enter o Buscar..."
-          ),
+          placeholder="Escribe el número de alarma y presiona Enter o Buscar...",
           label_visibility="collapsed",
       ).strip()
     with c_btn:
@@ -434,7 +444,7 @@ if st.session_state.pagina_actual == "🔍 Consultas":
             & (df_alarma["SECTOR"] == sec)
             & (df_alarma["LOTE"] == lt)
         )
-      df_alarma_resultado = df_alarma[filtro_lotes]
+      df_alarma_resultado = ordenar_padron(df_alarma[filtro_lotes])
       st.dataframe(df_alarma_resultado, use_container_width=True, hide_index=True)
     else:
       st.warning("No hay datos para esa seleccion")
@@ -492,6 +502,9 @@ if st.session_state.pagina_actual == "🔍 Consultas":
     else:
       criterio_activo = "Base Completa"
 
+  # Ordenamiento estricto para resultados en pantalla
+  df_resultado = ordenar_padron(df_resultado)
+
   # Resultados de ubicación
   st.markdown("---")
   st.markdown(f"### Resultados ({criterio_activo})")
@@ -500,7 +513,7 @@ if st.session_state.pagina_actual == "🔍 Consultas":
   else:
     st.warning("No hay datos para esa seleccion")
 
-  # Descargas organizadas para celular
+  # Descargas organizadas para celular (ordenadas de forma idéntica)
   st.markdown("---")
   st.markdown("### 📥 Descargar Reportes")
   d_row1_col1, d_row1_col2 = st.columns(2)
@@ -509,9 +522,7 @@ if st.session_state.pagina_actual == "🔍 Consultas":
         label="📊 Consulta (Excel)",
         data=exportar_excel(df_resultado),
         file_name="consulta_vecinos.xlsx",
-        mime=(
-            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        ),
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         use_container_width=True,
     )
   with d_row1_col2:
@@ -531,9 +542,7 @@ if st.session_state.pagina_actual == "🔍 Consultas":
         label="💾 Padrón Completo (Excel)",
         data=exportar_excel(df_base),
         file_name="padron_completo_calandrias.xlsx",
-        mime=(
-            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        ),
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         use_container_width=True,
     )
   with d_row2_col2:
@@ -591,14 +600,13 @@ elif st.session_state.pagina_actual == "🖼️ Galería e Imágenes":
       unsafe_allow_html=True,
   )
 
-  # CARGADOR EXCLUSIVO PARA ADMINISTRADOR (ARRIBA DEL TÍTULO DE LA GALERÍA)
   if es_admin:
     st.markdown(
         """
         <div style="background-color: #F0FDF4; padding: 14px 18px; border-radius: 10px; border: 2px solid #22C55E; margin-bottom: 18px;">
             <h4 style="margin: 0; color: #15803D;">👨‍💻 Panel de Administración (Solo Visible para Ti)</h4>
             <p style="margin: 4px 0 10px 0; color: #374151; font-size: 0.94rem;">
-                Publica comunicados en la galería o actualiza la foto del menú lateral arriba de CALANDRIAS.
+                Publica comunicados en la galería o guarda la foto del menú lateral arriba de CALANDRIAS.
             </p>
         </div>
         """,
@@ -615,8 +623,10 @@ elif st.session_state.pagina_actual == "🖼️ Galería e Imágenes":
       )
       if archivo_galeria is not None:
         if st.button("➕ Publicar en Galería", type="primary", use_container_width=True):
-          st.session_state.imagenes_galeria.append(archivo_galeria.getvalue())
-          st.success("¡Imagen publicada con éxito!")
+          ruta_destino = os.path.join(CARPETA_GALERIA, archivo_galeria.name)
+          with open(ruta_destino, "wb") as f:
+            f.write(archivo_galeria.getvalue())
+          st.success("¡Imagen guardada y publicada permanentemente!")
           st.rerun()
 
     with col_up2:
@@ -628,19 +638,23 @@ elif st.session_state.pagina_actual == "🖼️ Galería e Imágenes":
       )
       if archivo_logo is not None:
         if st.button("💾 Guardar Logo en Menú", type="primary", use_container_width=True):
-          st.session_state.sidebar_logo_bytes = archivo_logo.getvalue()
-          st.success("¡Logo del menú lateral actualizado!")
+          with open("logo.png", "wb") as f:
+            f.write(archivo_logo.getvalue())
+          st.success("¡Logo guardado en disco! Ahora persistirá aunque refresques.")
           st.rerun()
 
     st.markdown("---")
 
-  # TÍTULO: GALERÍA DEL BARRIO (Visible para todos)
+  # TÍTULO: GALERÍA DEL BARRIO
   st.markdown("### 📸 Galería del Barrio")
-  if st.session_state.imagenes_galeria:
-    for i, img in enumerate(reversed(st.session_state.imagenes_galeria)):
+  archivos_galeria = sorted(os.listdir(CARPETA_GALERIA), reverse=True)
+  
+  if archivos_galeria:
+    for img_nom in archivos_galeria:
+      ruta_completa = os.path.join(CARPETA_GALERIA, img_nom)
       st.image(
-          img,
-          caption=f"Comunicado / Plano Nº {len(st.session_state.imagenes_galeria) - i}",
+          ruta_completa,
+          caption=img_nom,
           use_container_width=True,
       )
       st.markdown("---")
