@@ -130,23 +130,26 @@ def normalizar_valor(val):
 
 
 def ordenar_padron(df):
-  """Ordena estrictamente: Manzana 15 A, 15 B, 16 A, 16 B... y por número de Lote."""
+  """Ordena estrictamente: Manzana 15 A, 15 B, 16 A, 16 B... por Lote y Contacto Principal primero."""
   if df.empty:
     return df
 
   df_ord = df.copy()
-  # Creamos columnas auxiliares para ordenamiento numérico
   df_ord["_mz_num"] = pd.to_numeric(df_ord["MANZANA"], errors="coerce").fillna(999)
   df_ord["_sec_str"] = df_ord["SECTOR"].astype(str).str.upper()
   df_ord["_lot_num"] = pd.to_numeric(df_ord["LOTE"], errors="coerce").fillna(999)
 
-  df_ord = df_ord.sort_values(
-      by=["_mz_num", "_sec_str", "_lot_num", "TIPO_CONTACTO"],
-      ascending=[True, True, True, False]
+  # Contacto Principal (1) siempre antes que Secundario (2)
+  df_ord["_tipo_prioridad"] = df_ord["TIPO_CONTACTO"].apply(
+      lambda x: 1 if "PRINCIPAL" in str(x).upper() else 2
   )
 
-  # Eliminamos las columnas auxiliares y devolvemos las oficiales
-  df_ord = df_ord.drop(columns=["_mz_num", "_sec_str", "_lot_num"])
+  df_ord = df_ord.sort_values(
+      by=["_mz_num", "_sec_str", "_lot_num", "_tipo_prioridad"],
+      ascending=[True, True, True, True]
+  )
+
+  df_ord = df_ord.drop(columns=["_mz_num", "_sec_str", "_lot_num", "_tipo_prioridad"])
   return df_ord
 
 
@@ -502,7 +505,7 @@ if st.session_state.pagina_actual == "🔍 Consultas":
     else:
       criterio_activo = "Base Completa"
 
-  # Ordenamiento estricto para resultados en pantalla
+  # Ordenamiento estricto: Principal antes que Secundario
   df_resultado = ordenar_padron(df_resultado)
 
   # Resultados de ubicación
@@ -513,7 +516,7 @@ if st.session_state.pagina_actual == "🔍 Consultas":
   else:
     st.warning("No hay datos para esa seleccion")
 
-  # Descargas organizadas para celular (ordenadas de forma idéntica)
+  # Descargas organizadas para celular
   st.markdown("---")
   st.markdown("### 📥 Descargar Reportes")
   d_row1_col1, d_row1_col2 = st.columns(2)
