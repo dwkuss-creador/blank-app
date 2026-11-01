@@ -181,6 +181,7 @@ def cargar_datos():
     for col in COLUMNAS_BD:
       df[col] = df[col].apply(normalizar_valor)
 
+    # Si un vecino se da de alta nuevamente, keep='last' toma sus datos actualizados
     df = df.drop_duplicates(
         subset=["MANZANA", "SECTOR", "LOTE", "TIPO_CONTACTO"], keep="last"
     )
@@ -321,7 +322,7 @@ OPCIONES_MENU = [
     "🔍 Consultas",
     "ℹ️ Datos Útiles",
     "🖼️ Galería e Imágenes",
-    "📝 Alta / Modificación",
+    "📝 Alta de Vecino",
 ]
 
 # Control de administrador por parámetro URL (?admin=si)
@@ -359,10 +360,15 @@ with st.sidebar:
   st.title("CALANDRIAS")
   st.caption("Padrón Vecinal y Alarmas")
 
+  # Validamos que la página actual exista en las nuevas opciones
+  indice_menu = 0
+  if st.session_state.pagina_actual in OPCIONES_MENU:
+    indice_menu = OPCIONES_MENU.index(st.session_state.pagina_actual)
+
   pagina = st.radio(
       "Secciones:",
       OPCIONES_MENU,
-      index=OPCIONES_MENU.index(st.session_state.pagina_actual),
+      index=indice_menu,
   )
 
   # Auto-ocultar menú lateral al cambiar de sección
@@ -665,11 +671,15 @@ elif st.session_state.pagina_actual == "🖼️ Galería e Imágenes":
     st.info("Aún no se han cargado imágenes en la galería para exhibir.")
 
 # =========================================================
-# SECCIÓN 4: ALTA / MODIFICACIÓN
+# SECCIÓN 4: ALTA DE VECINO (FORMULARIO DIRECTO)
 # =========================================================
-elif st.session_state.pagina_actual == "📝 Alta / Modificación":
+elif st.session_state.pagina_actual == "📝 Alta de Vecino":
   st.markdown(
-      '<div class="main-header">📝 Registro / Modificación</div>',
+      '<div class="main-header">📝 Alta de Vecino</div>',
+      unsafe_allow_html=True,
+  )
+  st.markdown(
+      '<div class="sub-header">Registro de lote y números de alarma (si ya existe, se actualizarán los datos).</div>',
       unsafe_allow_html=True,
   )
 
@@ -691,267 +701,144 @@ elif st.session_state.pagina_actual == "📝 Alta / Modificación":
         st.rerun()
     st.stop()
 
-  modo = st.radio(
-      "Acción a realizar:",
-      ["Alta de vecino", "Modificación de datos"],
-      horizontal=True,
-  )
+  p = st.session_state.precarga or {}
 
-  if modo == "Alta de vecino":
-    st.subheader("Formulario de Alta")
-    p = st.session_state.precarga or {}
-
-    col_m, col_s, col_l = st.columns(3)
-    with col_m:
-      manzana = st.selectbox(
-          "MANZANA *", [str(i) for i in range(15, 26)], key="alta_manzana"
-      )
-    with col_s:
-      sector = st.selectbox("A / B *", ["A", "B"], key="alta_sector")
-    with col_l:
-      lote = st.selectbox(
-          "LOTE *", [str(i) for i in range(1, 25)], key="alta_lote"
-      )
-
-    st.markdown("#### Contacto Principal")
-    col_ap, col_nom = st.columns(2)
-    with col_ap:
-      apellido = st.text_input(
-          "APELLIDO *", value=p.get("c1_apellido", "")
-      ).strip()
-    with col_nom:
-      nombre = st.text_input("NOMBRE *", value=p.get("c1_nombre", "")).strip()
-
-    celular = st.text_input(
-        "CELULAR *",
-        value=p.get("c1_celular", ""),
-        placeholder="Sin guiones ni espacios",
-    ).strip()
-
-    st.markdown("##### Números de Alarma (Hasta 4 números por lote)")
-    al_c1, al_c2 = st.columns(2)
-    with al_c1:
-      alarma1 = st.text_input(
-          "Alarma 1", value=str(p.get("alarma1", ""))
-      ).strip()
-      alarma3 = st.text_input(
-          "Alarma 3", value=str(p.get("alarma3", ""))
-      ).strip()
-    with al_c2:
-      alarma2 = st.text_input(
-          "Alarma 2", value=str(p.get("alarma2", ""))
-      ).strip()
-      alarma4 = st.text_input(
-          "Alarma 4", value=str(p.get("alarma4", ""))
-      ).strip()
-
-    st.markdown("---")
-    otro_contacto = st.selectbox(
-        "¿Quiere dar de alta otro contacto para el mismo lote?",
-        ["No", "Si"],
-        index=1 if p.get("tiene_c2") else 0,
+  col_m, col_s, col_l = st.columns(3)
+  with col_m:
+    manzana = st.selectbox(
+        "MANZANA *", [str(i) for i in range(15, 26)], key="alta_manzana"
+    )
+  with col_s:
+    sector = st.selectbox("A / B *", ["A", "B"], key="alta_sector")
+  with col_l:
+    lote = st.selectbox(
+        "LOTE *", [str(i) for i in range(1, 25)], key="alta_lote"
     )
 
-    c2_apellido, c2_nombre, c2_celular = "", "", ""
-    if otro_contacto == "Si":
-      st.markdown("#### Segundo Contacto")
-      c2_ap_col, c2_nom_col = st.columns(2)
-      with c2_ap_col:
-        c2_apellido = st.text_input(
-            "APELLIDO (2º Contacto) *", value=p.get("c2_apellido", "")
-        ).strip()
-      with c2_nom_col:
-        c2_nombre = st.text_input(
-            "NOMBRE (2º Contacto) *", value=p.get("c2_nombre", "")
-        ).strip()
-      c2_celular = st.text_input(
-          "CELULAR (2º Contacto) *",
-          value=p.get("c2_celular", ""),
-          placeholder="Sin guiones ni espacios",
-          key="c2_cel",
+  st.markdown("#### Contacto Principal")
+  col_ap, col_nom = st.columns(2)
+  with col_ap:
+    apellido = st.text_input(
+        "APELLIDO *", value=p.get("c1_apellido", "")
+    ).strip()
+  with col_nom:
+    nombre = st.text_input("NOMBRE *", value=p.get("c1_nombre", "")).strip()
+
+  celular = st.text_input(
+      "CELULAR *",
+      value=p.get("c1_celular", ""),
+      placeholder="Sin guiones ni espacios",
+  ).strip()
+
+  st.markdown("##### Números de Alarma (Hasta 4 números por lote)")
+  al_c1, al_c2 = st.columns(2)
+  with al_c1:
+    alarma1 = st.text_input(
+        "Alarma 1", value=str(p.get("alarma1", ""))
+    ).strip()
+    alarma3 = st.text_input(
+        "Alarma 3", value=str(p.get("alarma3", ""))
+    ).strip()
+  with al_c2:
+    alarma2 = st.text_input(
+        "Alarma 2", value=str(p.get("alarma2", ""))
+    ).strip()
+    alarma4 = st.text_input(
+        "Alarma 4", value=str(p.get("alarma4", ""))
+    ).strip()
+
+  st.markdown("---")
+  otro_contacto = st.selectbox(
+      "¿Quiere dar de alta otro contacto para el mismo lote?",
+      ["No", "Si"],
+      index=1 if p.get("tiene_c2") else 0,
+  )
+
+  c2_apellido, c2_nombre, c2_celular = "", "", ""
+  if otro_contacto == "Si":
+    st.markdown("#### Segundo Contacto")
+    c2_ap_col, c2_nom_col = st.columns(2)
+    with c2_ap_col:
+      c2_apellido = st.text_input(
+          "APELLIDO (2º Contacto) *", value=p.get("c2_apellido", "")
       ).strip()
+    with c2_nom_col:
+      c2_nombre = st.text_input(
+          "NOMBRE (2º Contacto) *", value=p.get("c2_nombre", "")
+      ).strip()
+    c2_celular = st.text_input(
+        "CELULAR (2º Contacto) *",
+        value=p.get("c2_celular", ""),
+        placeholder="Sin guiones ni espacios",
+        key="c2_cel",
+    ).strip()
 
-    if st.button("💾 Grabar Alta", type="primary", use_container_width=True):
-      valido_c1, msg_c1 = validar_celular(celular)
-      if not apellido or not nombre:
-        st.error("Ingrese Apellido y Nombre del contacto principal.")
-      elif not valido_c1:
-        st.error(f"Contacto Principal: {msg_c1}")
-      else:
-        error_c2 = False
-        if otro_contacto == "Si":
-          if not c2_apellido or not c2_nombre:
-            st.error("Ingrese Apellido y Nombre del segundo contacto.")
+  if st.button("💾 Grabar Alta", type="primary", use_container_width=True):
+    valido_c1, msg_c1 = validar_celular(celular)
+    if not apellido or not nombre:
+      st.error("Ingrese Apellido y Nombre del contacto principal.")
+    elif not valido_c1:
+      st.error(f"Contacto Principal: {msg_c1}")
+    else:
+      error_c2 = False
+      if otro_contacto == "Si":
+        if not c2_apellido or not c2_nombre:
+          st.error("Ingrese Apellido y Nombre del segundo contacto.")
+          error_c2 = True
+        else:
+          valido_c2, msg_c2 = validar_celular(c2_celular)
+          if not valido_c2:
+            st.error(f"Segundo Contacto: {msg_c2}")
             error_c2 = True
-          else:
-            valido_c2, msg_c2 = validar_celular(c2_celular)
-            if not valido_c2:
-              st.error(f"Segundo Contacto: {msg_c2}")
-              error_c2 = True
 
-        if not error_c2:
-          nuevas_filas = [{
+      if not error_c2:
+        nuevas_filas = [{
+            "MANZANA": manzana,
+            "SECTOR": sector,
+            "LOTE": lote,
+            "TIPO_CONTACTO": "Principal",
+            "APELLIDO": apellido,
+            "NOMBRE": nombre,
+            "CELULAR": celular,
+            "ALARMA_1": alarma1,
+            "ALARMA_2": alarma2,
+            "ALARMA_3": alarma3,
+            "ALARMA_4": alarma4,
+        }]
+
+        if otro_contacto == "Si":
+          nuevas_filas.append({
               "MANZANA": manzana,
               "SECTOR": sector,
               "LOTE": lote,
-              "TIPO_CONTACTO": "Principal",
-              "APELLIDO": apellido,
-              "NOMBRE": nombre,
-              "CELULAR": celular,
-              "ALARMA_1": alarma1,
-              "ALARMA_2": alarma2,
-              "ALARMA_3": alarma3,
-              "ALARMA_4": alarma4,
-          }]
+              "TIPO_CONTACTO": "Secundario",
+              "APELLIDO": c2_apellido,
+              "NOMBRE": c2_nombre,
+              "CELULAR": c2_celular,
+              "ALARMA_1": "",
+              "ALARMA_2": "",
+              "ALARMA_3": "",
+              "ALARMA_4": "",
+          })
 
-          if otro_contacto == "Si":
-            nuevas_filas.append({
-                "MANZANA": manzana,
-                "SECTOR": sector,
-                "LOTE": lote,
-                "TIPO_CONTACTO": "Secundario",
-                "APELLIDO": c2_apellido,
-                "NOMBRE": c2_nombre,
-                "CELULAR": c2_celular,
-                "ALARMA_1": "",
-                "ALARMA_2": "",
-                "ALARMA_3": "",
-                "ALARMA_4": "",
-            })
+        ok, msg_sheets = agregar_filas_sheets(nuevas_filas)
 
-          ok, msg_sheets = agregar_filas_sheets(nuevas_filas)
-
-          if ok:
-            st.success("¡Datos guardados correctamente en Google Sheets!")
-            st.session_state.precarga = {
-                "c1_apellido": apellido,
-                "c1_nombre": nombre,
-                "c1_celular": celular,
-                "alarma1": alarma1,
-                "alarma2": alarma2,
-                "alarma3": alarma3,
-                "alarma4": alarma4,
-                "tiene_c2": (otro_contacto == "Si"),
-                "c2_apellido": c2_apellido,
-                "c2_nombre": c2_nombre,
-                "c2_celular": c2_celular,
-            }
-            st.session_state.mostrar_dialogo_otro_lote = True
-            st.rerun()
-          else:
-            st.error(f"Error al grabar en Google Sheets: {msg_sheets}")
-
-  else:
-    st.subheader("Modificación de Datos Existentes")
-    col_m, col_s, col_l = st.columns(3)
-    with col_m:
-      m_mod = st.selectbox(
-          "Seleccione Manzana:",
-          [str(i) for i in range(15, 26)],
-          key="mod_manzana",
-      )
-    with col_s:
-      s_mod = st.selectbox("Seleccione Sector:", ["A", "B"], key="mod_sector")
-    with col_l:
-      l_mod = st.selectbox(
-          "Seleccione Lote:", [str(i) for i in range(1, 25)], key="mod_lote"
-      )
-
-    coincidencias = df_base[
-        (df_base["MANZANA"] == str(m_mod))
-        & (df_base["SECTOR"] == str(s_mod))
-        & (df_base["LOTE"] == str(l_mod))
-    ]
-
-    if coincidencias.empty:
-      st.warning(
-          f"No se encontró ningún registro para Manzana {m_mod} Sector {s_mod} Lote {l_mod}."
-      )
-    else:
-      st.info(f"Se encontraron {len(coincidencias)} contacto(s) para este lote.")
-      filas_editadas = []
-
-      for idx, row in coincidencias.iterrows():
-        tipo = row.get("TIPO_CONTACTO", "Contacto")
-        st.markdown(f"#### Editando {tipo}: {row.get('APELLIDO', '')}")
-
-        c_ap, c_nom = st.columns(2)
-        with c_ap:
-          nuevo_ap = st.text_input(
-              f"Apellido ({tipo})", value=row.get("APELLIDO", ""), key=f"ap_{idx}"
-          )
-        with c_nom:
-          nuevo_nom = st.text_input(
-              f"Nombre ({tipo})", value=row.get("NOMBRE", ""), key=f"nom_{idx}"
-          )
-
-        nuevo_cel = st.text_input(
-            f"Celular ({tipo})", value=row.get("CELULAR", ""), key=f"cel_{idx}"
-        )
-
-        a1, a2, a3, a4 = row.get("ALARMA_1", ""), "", "", ""
-        if tipo == "Principal":
-          st.caption("Alarmas del Lote (2x2)")
-          al1_c, al2_c = st.columns(2)
-          with al1_c:
-            a1 = st.text_input(
-                "Alarma 1",
-                value=str(row.get("ALARMA_1", "")),
-                key=f"al1_{idx}",
-            )
-            a3 = st.text_input(
-                "Alarma 3",
-                value=str(row.get("ALARMA_3", "")),
-                key=f"al3_{idx}",
-            )
-          with al2_c:
-            a2 = st.text_input(
-                "Alarma 2",
-                value=str(row.get("ALARMA_2", "")),
-                key=f"al2_{idx}",
-            )
-            a4 = st.text_input(
-                "Alarma 4",
-                value=str(row.get("ALARMA_4", "")),
-                key=f"al4_{idx}",
-            )
-
-        filas_editadas.append({
-            "INDEX": idx,
-            "MANZANA": str(m_mod),
-            "SECTOR": str(s_mod),
-            "LOTE": str(l_mod),
-            "TIPO_CONTACTO": tipo,
-            "APELLIDO": nuevo_ap,
-            "NOMBRE": nuevo_nom,
-            "CELULAR": nuevo_cel,
-            "ALARMA_1": a1,
-            "ALARMA_2": a2,
-            "ALARMA_3": a3,
-            "ALARMA_4": a4,
-        })
-
-      if st.button(
-          "💾 Guardar Modificaciones", type="primary", use_container_width=True
-      ):
-        error = False
-        for f in filas_editadas:
-          valido, msg = validar_celular(f["CELULAR"])
-          if not valido:
-            st.error(f"Error en {f['TIPO_CONTACTO']}: {msg}")
-            error = True
-            break
-
-        if not error:
-          df_modificado = df_base.copy()
-          for f in filas_editadas:
-            idx = f["INDEX"]
-            for col in COLUMNAS_BD:
-              df_modificado.at[idx, col] = f[col]
-
-          exito, msg_sync = guardar_datos_completos(df_modificado)
-          if exito:
-            st.success("¡Datos actualizados con éxito en Google Sheets!")
-            st.rerun()
-          else:
-            st.error(f"Error al sincronizar cambios: {msg_sync}")
+        if ok:
+          st.success("¡Datos guardados correctamente en Google Sheets!")
+          st.session_state.precarga = {
+              "c1_apellido": apellido,
+              "c1_nombre": nombre,
+              "c1_celular": celular,
+              "alarma1": alarma1,
+              "alarma2": alarma2,
+              "alarma3": alarma3,
+              "alarma4": alarma4,
+              "tiene_c2": (otro_contacto == "Si"),
+              "c2_apellido": c2_apellido,
+              "c2_nombre": c2_nombre,
+              "c2_celular": c2_celular,
+          }
+          st.session_state.mostrar_dialogo_otro_lote = True
+          st.rerun()
+        else:
+          st.error(f"Error al grabar en Google Sheets: {msg_sheets}")
