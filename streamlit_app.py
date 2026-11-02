@@ -83,8 +83,8 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# URL del backend Google Apps Script (desde st.secrets o fallback)
-DEFAULT_API_URL = "https://script.google.com/macros/s/AKfycbyfD0jK3Pvhc05w6eQWzH5g4f6yD8u7i5o_example/exec"
+# URL real del backend Google Apps Script (directa y sin depender de secrets)
+DEFAULT_API_URL = "https://script.google.com/macros/s/AKfycbxb8b9zDC6NMnEkd2vhxorM2co5ieLG0XcrVAi67OHkSZoekFTy7uRopbyFFhor8RQd/exec"
 API_URL = st.secrets.get("SHEETS_API_URL", DEFAULT_API_URL)
 
 # ==============================================================================
@@ -95,19 +95,17 @@ def cargar_datos_backend():
     """
     Obtiene los datos desde Google Apps Script.
     Maneja tanto la respuesta combinada {vecinos: [...], telefonos: [...]}
-    como la respuesta plana tradicional [[...], [...]] para garantizar compatibilidad.
+    como la respuesta plana anterior [[...], [...]] para garantizar total compatibilidad.
     """
     try:
         res = requests.get(API_URL, timeout=12)
         res.raise_for_status()
         
         texto_respuesta = res.text.strip()
-        # Verificación para detectar si Google devolvió pantalla HTML de login por falta de permisos públicos
         if texto_respuesta.startswith("<") or "<html" in texto_respuesta.lower():
             st.error(
-                "⚠️ **Error de acceso en Google Apps Script:** La URL devolvió una página de Google en vez de datos JSON. "
-                "Para solucionarlo: En Apps Script hacé clic en **Implementar > Administrar implementaciones**, "
-                "editá la versión activa y verificá que **Quién tiene acceso** esté configurado en **Cualquier persona** (Anyone)."
+                "⚠️ **Error de acceso en Google Apps Script:** La URL devolvió una página HTML en lugar de datos JSON. "
+                "Revisá en Google Apps Script > Implementar > Administrar implementaciones que 'Quién tiene acceso' esté en 'Cualquier persona' (Anyone)."
             )
             return [], []
             
@@ -115,7 +113,7 @@ def cargar_datos_backend():
         raw_vecinos = []
         raw_telefonos = []
         
-        # 1. Si es un diccionario con la nueva estructura combinada
+        # 1. Si es un diccionario con la nueva estructura
         if isinstance(payload, dict):
             raw_vecinos = payload.get("vecinos", [])
             raw_telefonos = payload.get("telefonos", [])
@@ -126,10 +124,7 @@ def cargar_datos_backend():
             
         return raw_vecinos, raw_telefonos
     except json.JSONDecodeError:
-        st.error(
-            "⚠️ Error al interpretar los datos recibidos (no es JSON válido). "
-            "Asegurate de que la Web App en Google Apps Script tenga acceso público ('Cualquier persona')."
-        )
+        st.error("⚠️ Error al decodificar JSON. Asegurate de que la Web App en Apps Script tenga acceso público.")
         return [], []
     except Exception as e:
         st.error(f"⚠️ Error al conectar con el servidor: {e}")
