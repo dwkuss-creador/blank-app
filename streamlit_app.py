@@ -530,4 +530,256 @@ elif st.session_state.pagina_actual == "ℹ️ Datos Útiles":
         unsafe_allow_html=True,
     )
     st.markdown(
-        '<div class="sub-header">Información de contacto, emergencias y servicios del
+        '<div class="sub-header">Información de contacto, emergencias y servicios del barrio.</div>',
+        unsafe_allow_html=True,
+    )
+    col1, col2 = st.columns(2)
+    with col1:
+        st.markdown("### 🚨 Teléfonos de Emergencia")
+        st.info("""
+        * **Guardia / Portería Calandrias:** (A completar)
+        * **Policía / Comisaría:** 911 / (A completar)
+        * **Bomberos:** 100 / (A completar)
+        * **Emergencias Médicas / Ambulancia:** 107
+        """)
+    with col2:
+        st.markdown("### 🏢 Administración y Servicios")
+        st.info("""
+        * **Administración del Barrio:** (A completar)
+        * **Mantenimiento General:** (A completar)
+        * **Recolección de Residuos:** Días y horarios a definir
+        * **Comisión Vecinal:** (A completar)
+        """)
+
+# =========================================================
+# SECCIÓN 3: GALERÍA E IMÁGENES
+# =========================================================
+elif st.session_state.pagina_actual == "🖼️ Galería e Imágenes":
+    st.markdown(
+        '<div class="main-header">🖼️ Galería y Comunicados</div>',
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        '<div class="sub-header">Planos del barrio, avisos importantes y fotografías.</div>',
+        unsafe_allow_html=True,
+    )
+    if es_admin:
+        st.markdown(
+            """
+        <div style="background-color: #F0FDF4; padding: 14px 18px; border-radius: 10px; border: 2px solid #22C55E; margin-bottom: 18px;">
+            <h4 style="margin: 0; color: #15803D;">👨‍💻 Panel de Administración (Solo Visible para Ti)</h4>
+            <p style="margin: 4px 0 10px 0; color: #374151; font-size: 0.94rem;">
+                Publica comunicados en la galería o guarda la foto del menú lateral arriba de CALANDRIAS.
+            </p>
+        </div>
+        """,
+            unsafe_allow_html=True,
+        )
+        col_up1, col_up2 = st.columns(2)
+        with col_up1:
+            st.markdown("##### 📤 Subir Imagen a la Galería")
+            archivo_galeria = st.file_uploader(
+                "Selecciona plano o comunicado (JPG/PNG):",
+                type=["png", "jpg", "jpeg"],
+                key="up_galeria_box",
+            )
+            if archivo_galeria is not None:
+                if st.button("➕ Publicar en Galería", type="primary", use_container_width=True):
+                    ruta_destino = os.path.join(CARPETA_GALERIA, archivo_galeria.name)
+                    with open(ruta_destino, "wb") as f:
+                        f.write(archivo_galeria.getvalue())
+                    st.success("¡Imagen guardada y publicada permanentemente!")
+                    st.rerun()
+        with col_up2:
+            st.markdown("##### 🖼️ Cambiar Imagen del Menú Lateral")
+            archivo_logo = st.file_uploader(
+                "Foto arriba de CALANDRIAS (JPG/PNG):",
+                type=["png", "jpg", "jpeg"],
+                key="up_logo_sidebar_box",
+            )
+            if archivo_logo is not None:
+                if st.button("💾 Guardar Logo en Menú", type="primary", use_container_width=True):
+                    with open("logo.png", "wb") as f:
+                        f.write(archivo_logo.getvalue())
+                    st.success("¡Logo guardado en disco! Ahora persistirá aunque refresques.")
+                    st.rerun()
+        st.markdown("---")
+        
+    st.markdown("### 📸 Galería del Barrio")
+    archivos_galeria = sorted(os.listdir(CARPETA_GALERIA), reverse=True)
+    if archivos_galeria:
+        for img_nom in archivos_galeria:
+            ruta_completa = os.path.join(CARPETA_GALERIA, img_nom)
+            st.image(
+                ruta_completa,
+                caption=img_nom,
+                use_container_width=True,
+            )
+            st.markdown("---")
+    else:
+        st.info("Aún no se han cargado imágenes en la galería para exhibir.")
+
+# =========================================================
+# SECCIÓN 4: ALTA DE VECINO (FORMULARIO DIRECTO)
+# =========================================================
+elif st.session_state.pagina_actual == "📝 Alta de Vecino":
+    st.markdown(
+        '<div class="main-header">📝 Alta de Vecino</div>',
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        '<div class="sub-header">Registro de lote y números de alarma (si ya existe, se actualizarán los datos).</div>',
+        unsafe_allow_html=True,
+    )
+    if st.session_state.mostrar_dialogo_otro_lote:
+        st.success("✅ ¡Datos guardados exitosamente!")
+        st.markdown("#### ¿Desea dar de alta otro lote con los mismos contactos?")
+        col_si, col_no = st.columns(2)
+        with col_si:
+            if st.button(
+                "👍 SÍ, cargar otro lote", type="primary", use_container_width=True
+            ):
+                st.session_state.mostrar_dialogo_otro_lote = False
+                st.rerun()
+        with col_no:
+            if st.button("❌ NO, ir a Consultas", use_container_width=True):
+                st.session_state.precarga = None
+                st.session_state.mostrar_dialogo_otro_lote = False
+                st.session_state.pagina_actual = "🔍 Consultas"
+                st.rerun()
+        st.stop()
+        
+    p = st.session_state.precarga or {}
+    col_m, col_s, col_l = st.columns(3)
+    with col_m:
+        manzana = st.selectbox(
+            "MANZANA *", [str(i) for i in range(15, 26)], key="alta_manzana"
+        )
+    with col_s:
+        sector = st.selectbox("A / B *", ["A", "B"], key="alta_sector")
+    with col_l:
+        lote = st.selectbox(
+            "LOTE *", [str(i) for i in range(1, 25)], key="alta_lote"
+        )
+        
+    st.markdown("#### Contacto Principal")
+    col_ap, col_nom = st.columns(2)
+    with col_ap:
+        apellido = st.text_input(
+            "APELLIDO *", value=p.get("c1_apellido", "")
+        ).strip()
+    with col_nom:
+        nombre = st.text_input("NOMBRE *", value=p.get("c1_nombre", "")).strip()
+    celular = st.text_input(
+        "CELULAR *",
+        value=p.get("c1_celular", ""),
+        placeholder="Sin guiones ni espacios",
+    ).strip()
+    
+    st.markdown("##### Números de Alarma (Hasta 4 números por lote)")
+    al_c1, al_c2 = st.columns(2)
+    with al_c1:
+        alarma1 = st.text_input(
+            "Alarma 1", value=str(p.get("alarma1", ""))
+        ).strip()
+        alarma3 = st.text_input(
+            "Alarma 3", value=str(p.get("alarma3", ""))
+        ).strip()
+    with al_c2:
+        alarma2 = st.text_input(
+            "Alarma 2", value=str(p.get("alarma2", ""))
+        ).strip()
+        alarma4 = st.text_input(
+            "Alarma 4", value=str(p.get("alarma4", ""))
+        ).strip()
+        
+    st.markdown("---")
+    otro_contacto = st.selectbox(
+        "¿Quiere dar de alta otro contacto para el mismo lote?",
+        ["No", "Si"],
+        index=1 if p.get("tiene_c2") else 0,
+    )
+    c2_apellido, c2_nombre, c2_celular = "", "", ""
+    if otro_contacto == "Si":
+        st.markdown("#### Segundo Contacto")
+        c2_ap_col, c2_nom_col = st.columns(2)
+        with c2_ap_col:
+            c2_apellido = st.text_input(
+                "APELLIDO (2º Contacto) *", value=p.get("c2_apellido", "")
+            ).strip()
+        with c2_nom_col:
+            c2_nombre = st.text_input(
+                "NOMBRE (2º Contacto) *", value=p.get("c2_nombre", "")
+            ).strip()
+        c2_celular = st.text_input(
+            "CELULAR (2º Contacto) *",
+            value=p.get("c2_celular", ""),
+            placeholder="Sin guiones ni espacios",
+            key="c2_cel",
+        ).strip()
+        
+    if st.button("💾 Grabar Alta", type="primary", use_container_width=True):
+        valido_c1, msg_c1 = validar_celular(celular)
+        if not apellido or not nombre:
+            st.error("Ingrese Apellido y Nombre del contacto principal.")
+        elif not valido_c1:
+            st.error(f"Contacto Principal: {msg_c1}")
+        else:
+            error_c2 = False
+            if otro_contacto == "Si":
+                if not c2_apellido or not c2_nombre:
+                    st.error("Ingrese Apellido y Nombre del segundo contacto.")
+                    error_c2 = True
+                else:
+                    valido_c2, msg_c2 = validar_celular(c2_celular)
+                    if not valido_c2:
+                        st.error(f"Segundo Contacto: {msg_c2}")
+                        error_c2 = True
+            if not error_c2:
+                nuevas_filas = [{
+                    "MANZANA": manzana,
+                    "SECTOR": sector,
+                    "LOTE": lote,
+                    "TIPO_CONTACTO": "Principal",
+                    "APELLIDO": apellido,
+                    "NOMBRE": nombre,
+                    "CELULAR": celular,
+                    "ALARMA_1": alarma1,
+                    "ALARMA_2": alarma2,
+                    "ALARMA_3": alarma3,
+                    "ALARMA_4": alarma4,
+                }]
+                if otro_contacto == "Si":
+                    nuevas_filas.append({
+                        "MANZANA": manzana,
+                        "SECTOR": sector,
+                        "LOTE": lote,
+                        "TIPO_CONTACTO": "Secundario",
+                        "APELLIDO": c2_apellido,
+                        "NOMBRE": c2_nombre,
+                        "CELULAR": c2_celular,
+                        "ALARMA_1": "",
+                        "ALARMA_2": "",
+                        "ALARMA_3": "",
+                        "ALARMA_4": "",
+                    })
+                ok, msg_sheets = agregar_filas_sheets(nuevas_filas)
+                if ok:
+                    st.success("¡Datos guardados correctamente en Google Sheets!")
+                    st.session_state.precarga = {
+                        "c1_apellido": apellido,
+                        "c1_nombre": nombre,
+                        "c1_celular": celular,
+                        "alarma1": alarma1,
+                        "alarma2": alarma2,
+                        "alarma3": alarma3,
+                        "alarma4": alarma4,
+                        "tiene_c2": (otro_contacto == "Si"),
+                        "c2_apellido": c2_apellido,
+                        "c2_nombre": c2_nombre,
+                        "c2_celular": c2_celular,
+                    }
+                    st.session_state.mostrar_dialogo_otro_lote = True
+                    st.rerun()
+                else:
+                    st.error(f"Error al grabar en Google Sheets: {msg_sheets}")
