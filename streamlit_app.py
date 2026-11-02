@@ -95,17 +95,27 @@ def cargar_datos_backend():
     """
     Obtiene los datos desde Google Apps Script.
     Maneja tanto la respuesta combinada {vecinos: [...], telefonos: [...]}
-    como la respuesta plana anterior [[...], [...]] para garantizar total compatibilidad.
+    como la respuesta plana tradicional [[...], [...]] para garantizar compatibilidad.
     """
     try:
         res = requests.get(API_URL, timeout=12)
         res.raise_for_status()
-        payload = res.json()
         
+        texto_respuesta = res.text.strip()
+        # Verificación para detectar si Google devolvió pantalla HTML de login por falta de permisos públicos
+        if texto_respuesta.startswith("<") or "<html" in texto_respuesta.lower():
+            st.error(
+                "⚠️ **Error de acceso en Google Apps Script:** La URL devolvió una página de Google en vez de datos JSON. "
+                "Para solucionarlo: En Apps Script hacé clic en **Implementar > Administrar implementaciones**, "
+                "editá la versión activa y verificá que **Quién tiene acceso** esté configurado en **Cualquier persona** (Anyone)."
+            )
+            return [], []
+            
+        payload = res.json()
         raw_vecinos = []
         raw_telefonos = []
         
-        # 1. Si es un diccionario con la nueva estructura
+        # 1. Si es un diccionario con la nueva estructura combinada
         if isinstance(payload, dict):
             raw_vecinos = payload.get("vecinos", [])
             raw_telefonos = payload.get("telefonos", [])
@@ -115,6 +125,12 @@ def cargar_datos_backend():
             raw_telefonos = []
             
         return raw_vecinos, raw_telefonos
+    except json.JSONDecodeError:
+        st.error(
+            "⚠️ Error al interpretar los datos recibidos (no es JSON válido). "
+            "Asegurate de que la Web App en Google Apps Script tenga acceso público ('Cualquier persona')."
+        )
+        return [], []
     except Exception as e:
         st.error(f"⚠️ Error al conectar con el servidor: {e}")
         return [], []
@@ -413,4 +429,3 @@ if is_admin and tab_admin_list:
                     st.error(f"Error de conexión: {err}")
         else:
             st.caption("No hay contactos disponibles para desactivar.")
-
