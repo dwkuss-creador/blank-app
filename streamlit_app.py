@@ -1049,4 +1049,3 @@ elif st.session_state.pagina_actual == "📝 Alta de Vecino":
                     st.rerun()
                 else:
                     st.error(f"Error al grabar en Google Sheets: {msg_sheets}")
-```
