@@ -14,14 +14,14 @@ st.set_page_config(
     page_title="APP VECINOS CALANDRIAS",
     page_icon="🏡",
     layout="wide",
-    initial_sidebar_state="expanded",  # Menú abierto por defecto
+    initial_sidebar_state="collapsed",  # 📱 Menú colapsado en móviles
 )
 
 # Carpeta física persistente para la galería
 CARPETA_GALERIA = "galeria_fotos"
 os.makedirs(CARPETA_GALERIA, exist_ok=True)
 
-# Estilos CSS: Bloqueo de oscurecimiento + Adaptabilidad móvil
+# Estilos CSS: Bloqueo de oscurecimiento + Adaptabilidad móvil + Forzado modo claro en inputs/selectores
 st.markdown(
     """
 <style>
@@ -79,12 +79,18 @@ st.markdown(
         border-radius: 8px !important;
     }
 
-    /* Selectores (Manzana, Sector A/B, Lote) con el mismo estilo del campo Apellido */
-    div[data-testid="stSelectbox"] div[data-baseweb="select"] > div {
+    /* SELECTORES (Manzana, Sector A/B, Lote) - Forzado total sobre BaseWeb y Modo Oscuro en PC */
+    div[data-testid="stSelectbox"] div[data-baseweb="select"],
+    div[data-testid="stSelectbox"] div[data-baseweb="select"] > div,
+    div[data-testid="stSelectbox"] div[data-baseweb="select"] [role="combobox"],
+    div[data-testid="stSelectbox"] div[data-baseweb="select"] div {
         background-color: #F8FAFC !important;
+        color: #0F172A !important;
+    }
+    div[data-testid="stSelectbox"] div[data-baseweb="select"] > div {
         border: 2px solid #2563EB !important;
         border-radius: 8px !important;
-        color: #0F172A !important;
+        min-height: 44px !important;
     }
     div[data-testid="stSelectbox"] div[data-baseweb="select"] * {
         color: #0F172A !important;
@@ -92,6 +98,19 @@ st.markdown(
     }
     div[data-testid="stSelectbox"] svg {
         fill: #0F172A !important;
+        color: #0F172A !important;
+    }
+
+    /* Menú desplegable flotante al hacer clic en PC y móvil */
+    div[data-baseweb="popover"],
+    div[data-baseweb="popover"] > div,
+    ul[data-baseweb="menu"],
+    li[data-baseweb="menu-item"] {
+        background-color: #FFFFFF !important;
+        color: #0F172A !important;
+    }
+    li[data-baseweb="menu-item"] * {
+        color: #0F172A !important;
     }
 
     /* Botones táctiles */
@@ -234,7 +253,6 @@ def agregar_filas_sheets(nuevas_filas_dicts):
 # ---------------------------------------------------------
 def validar_celular(celular):
     cel = str(celular).strip()
-    # Extraer dígitos para tolerar espacios, guiones o signos +
     cel_limpio = "".join(c for c in cel if c.isdigit())
     if not cel_limpio:
         return False, "El celular no puede estar vacío.", ""
