@@ -1,3 +1,4 @@
+
 import io
 import json
 import os
@@ -565,11 +566,10 @@ elif st.session_state.pagina_actual == "ℹ️ Datos Útiles":
     )
 
     # ---------------------------------------------------------
-    # TÍTULO FLOTANTE AL COMIENZO
+    # 1. TELÉFONOS DE EMERGENCIA
     # ---------------------------------------------------------
     st.markdown("### 🚨 Teléfonos de Emergencia")
 
-    # Filtro: registros marcados con TARJETA == 'EMERGENCIA' y ACTIVO != 'NO'
     df_emergencias = pd.DataFrame()
     if not df_telefonos.empty and "TARJETA" in df_telefonos.columns:
         filtro_tarjeta = df_telefonos["TARJETA"].str.upper().str.contains("EMERGENCIA")
@@ -579,7 +579,6 @@ elif st.session_state.pagina_actual == "ℹ️ Datos Útiles":
         else:
             df_emergencias = df_telefonos[filtro_tarjeta]
 
-    # TARJETA CONTENEDORA DE ANCHO COMPLETO (Sin sangría Markdown)
     if not df_emergencias.empty:
         filas_html_list = []
         total_filas = len(df_emergencias)
@@ -599,7 +598,7 @@ elif st.session_state.pagina_actual == "ℹ️ Datos Útiles":
 
         contenido_card = "".join(filas_html_list)
         tarjeta_completa = (
-            '<div style="background-color: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); margin-bottom: 24px;">'
+            '<div style="background-color: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); margin-bottom: 28px;">'
             + contenido_card
             + '</div>'
         )
@@ -607,20 +606,55 @@ elif st.session_state.pagina_actual == "ℹ️ Datos Útiles":
     else:
         st.info("ℹ️ Sincronizando teléfonos de emergencia desde la hoja 'DIRECTORIO_TELEFONOS'...")
 
-    # Bloques secundarios informativos
-    col1, col2 = st.columns(2)
-    with col1:
-        st.markdown("### 🏢 Administración y Servicios")
-        st.info("""
-        * **Administración del Barrio:** (A completar)
-        * **Mantenimiento General:** (A completar)
-        """)
-    with col2:
-        st.markdown("### 📋 Información General")
-        st.info("""
-        * **Recolección de Residuos:** Días y horarios a definir
-        * **Comisión Vecinal:** (A completar)
-        """)
+    # ---------------------------------------------------------
+    # 2. TELÉFONOS ÚTILES (ORGANIZADOS POR CATEGORÍA ALFABÉTICA)
+    # ---------------------------------------------------------
+    st.markdown("### 📞 Teléfonos Útiles")
+
+    df_utiles = pd.DataFrame()
+    if not df_telefonos.empty and "TARJETA" in df_telefonos.columns:
+        filtro_tarjeta_u = df_telefonos["TARJETA"].str.upper().str.contains("UTILES")
+        if "ACTIVO" in df_telefonos.columns:
+            filtro_activo_u = df_telefonos["ACTIVO"].str.upper() != "NO"
+            df_utiles = df_telefonos[filtro_tarjeta_u & filtro_activo_u]
+        else:
+            df_utiles = df_telefonos[filtro_tarjeta_u]
+
+    if not df_utiles.empty and "CATEGORIA" in df_utiles.columns:
+        # Categorías únicas en orden alfabético
+        categorias = sorted([c for c in df_utiles["CATEGORIA"].dropna().unique() if str(c).strip() != ""])
+
+        for cat in categorias:
+            df_cat = df_utiles[df_utiles["CATEGORIA"] == cat].copy()
+            # Orden alfabético por Nombre dentro de la categoría
+            if "NOMBRE" in df_cat.columns:
+                df_cat = df_cat.sort_values(by="NOMBRE", key=lambda col: col.str.lower())
+
+            with st.expander(f"📁 {cat.upper()}", expanded=False):
+                filas_cat_list = []
+                total_cat = len(df_cat)
+                for idx_c, (_, row_u) in enumerate(df_cat.iterrows()):
+                    nom_u = row_u.get("NOMBRE", "Sin Nombre")
+                    tel_u = row_u.get("TELEFONO", "")
+                    num_clean_u = "".join(c for c in str(tel_u) if c.isdigit() or c == '+')
+                    border_b = "border-bottom: 1px solid #E2E8F0;" if idx_c < total_cat - 1 else ""
+
+                    fila_u_html = (
+                        f'<div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; {border_b} gap: 12px; flex-wrap: wrap;">'
+                        f'<span style="font-size: 1rem; font-weight: 600; color: #1E293B;">{nom_u}</span>'
+                        f'<a href="tel:{num_clean_u}" style="font-size: 1.05rem; font-weight: 700; color: #1D4ED8; text-decoration: none;">📞 {tel_u}</a>'
+                        f'</div>'
+                    )
+                    filas_cat_list.append(fila_u_html)
+
+                card_cat_html = (
+                    '<div style="background-color: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 8px; margin: 4px 0;">'
+                    + "".join(filas_cat_list)
+                    + '</div>'
+                )
+                st.markdown(card_cat_html, unsafe_allow_html=True)
+    else:
+        st.info("ℹ️ Sincronizando teléfonos útiles desde la hoja 'DIRECTORIO_TELEFONOS'...")
 
 # =========================================================
 # SECCIÓN 3: GALERÍA E IMÁGENES
