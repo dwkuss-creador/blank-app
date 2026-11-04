@@ -579,9 +579,9 @@ elif st.session_state.pagina_actual == "ℹ️ Datos Útiles":
         else:
             df_emergencias = df_telefonos[filtro_tarjeta]
 
-    # TARJETA CONTENEDORA DE ANCHO COMPLETO CON TODOS LOS TELÉFONOS
+    # TARJETA CONTENEDORA DE ANCHO COMPLETO (Sin sangría Markdown)
     if not df_emergencias.empty:
-        filas_html = ""
+        filas_html_list = []
         total_filas = len(df_emergencias)
         for idx, (_, row_tel) in enumerate(df_emergencias.iterrows()):
             nombre_tel = row_tel.get("NOMBRE", "Sin Nombre")
@@ -589,20 +589,21 @@ elif st.session_state.pagina_actual == "ℹ️ Datos Útiles":
             num_clean = "".join(c for c in str(numero_tel) if c.isdigit() or c == '+')
             border_bottom = "border-bottom: 1px solid #E2E8F0;" if idx < total_filas - 1 else ""
 
-            filas_html += f"""
-            <div style="display: flex; justify-content: space-between; align-items: center; padding: 14px 18px; {border_bottom} gap: 12px; flex-wrap: wrap;">
-                <span style="font-size: 1.05rem; font-weight: 600; color: #1E293B;">{nombre_tel}</span>
-                <a href="tel:{num_clean}" style="font-size: 1.1rem; font-weight: 700; color: #1D4ED8; text-decoration: none;">
-                    📞 {numero_tel}
-                </a>
-            </div>
-            """
+            fila_item = (
+                f'<div style="display: flex; justify-content: space-between; align-items: center; padding: 14px 18px; {border_bottom} gap: 12px; flex-wrap: wrap;">'
+                f'<span style="font-size: 1.05rem; font-weight: 600; color: #1E293B;">{nombre_tel}</span>'
+                f'<a href="tel:{num_clean}" style="font-size: 1.1rem; font-weight: 700; color: #1D4ED8; text-decoration: none;">📞 {numero_tel}</a>'
+                f'</div>'
+            )
+            filas_html_list.append(fila_item)
 
-        st.markdown(f"""
-        <div style="background-color: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); margin-bottom: 24px;">
-            {filas_html}
-        </div>
-        """, unsafe_allow_html=True)
+        contenido_card = "".join(filas_html_list)
+        tarjeta_completa = (
+            '<div style="background-color: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); margin-bottom: 24px;">'
+            + contenido_card
+            + '</div>'
+        )
+        st.markdown(tarjeta_completa, unsafe_allow_html=True)
     else:
         st.info("ℹ️ Sincronizando teléfonos de emergencia desde la hoja 'DIRECTORIO_TELEFONOS'...")
 
@@ -859,4 +860,3 @@ elif st.session_state.pagina_actual == "📝 Alta de Vecino":
                     st.rerun()
                 else:
                     st.error(f"Error al grabar en Google Sheets: {msg_sheets}")
-
