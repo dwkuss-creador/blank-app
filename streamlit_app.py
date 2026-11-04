@@ -565,12 +565,9 @@ elif st.session_state.pagina_actual == "ℹ️ Datos Útiles":
     )
 
     # ---------------------------------------------------------
-    # TARJETA 1: TELÉFONOS DE EMERGENCIA (ANCHO COMPLETO)
+    # TÍTULO FLOTANTE AL COMIENZO
     # ---------------------------------------------------------
-    st.markdown("""
-    <div style="background-color: #FEF2F2; border: 2px solid #EF4444; border-left: 8px solid #DC2626; border-radius: 10px; padding: 18px 20px; margin-bottom: 24px;">
-        <h3 style="color: #991B1B; margin-top: 0; margin-bottom: 14px; font-size: 1.35rem;">🚨 Teléfonos de Emergencia</h3>
-    """, unsafe_allow_html=True)
+    st.markdown("### 🚨 Teléfonos de Emergencia")
 
     # Filtro: registros marcados con TARJETA == 'EMERGENCIA' y ACTIVO != 'NO'
     df_emergencias = pd.DataFrame()
@@ -582,28 +579,32 @@ elif st.session_state.pagina_actual == "ℹ️ Datos Útiles":
         else:
             df_emergencias = df_telefonos[filtro_tarjeta]
 
+    # TARJETA CONTENEDORA DE ANCHO COMPLETO CON TODOS LOS TELÉFONOS
     if not df_emergencias.empty:
-        for _, row_tel in df_emergencias.iterrows():
+        filas_html = ""
+        total_filas = len(df_emergencias)
+        for idx, (_, row_tel) in enumerate(df_emergencias.iterrows()):
             nombre_tel = row_tel.get("NOMBRE", "Sin Nombre")
             numero_tel = row_tel.get("TELEFONO", "")
             num_clean = "".join(c for c in str(numero_tel) if c.isdigit() or c == '+')
+            border_bottom = "border-bottom: 1px solid #E2E8F0;" if idx < total_filas - 1 else ""
 
-            st.markdown(f"""
-            <div style="background-color: #FFFFFF; border: 1px solid #FECACA; border-radius: 8px; padding: 12px 16px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
-                <div>
-                    <span style="font-size: 1.05rem; font-weight: 700; color: #1E293B;">{nombre_tel}</span>
-                </div>
-                <div>
-                    <a href="tel:{num_clean}" style="background-color: #DC2626; color: #FFFFFF !important; font-weight: 600; padding: 6px 14px; border-radius: 6px; text-decoration: none; display: inline-flex; align-items: center; gap: 6px;">
-                        📞 {numero_tel}
-                    </a>
-                </div>
+            filas_html += f"""
+            <div style="display: flex; justify-content: space-between; align-items: center; padding: 14px 18px; {border_bottom} gap: 12px; flex-wrap: wrap;">
+                <span style="font-size: 1.05rem; font-weight: 600; color: #1E293B;">{nombre_tel}</span>
+                <a href="tel:{num_clean}" style="font-size: 1.1rem; font-weight: 700; color: #1D4ED8; text-decoration: none;">
+                    📞 {numero_tel}
+                </a>
             </div>
-            """, unsafe_allow_html=True)
+            """
+
+        st.markdown(f"""
+        <div style="background-color: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); margin-bottom: 24px;">
+            {filas_html}
+        </div>
+        """, unsafe_allow_html=True)
     else:
         st.info("ℹ️ Sincronizando teléfonos de emergencia desde la hoja 'DIRECTORIO_TELEFONOS'...")
-
-    st.markdown("</div>", unsafe_allow_html=True)
 
     # Bloques secundarios informativos
     col1, col2 = st.columns(2)
@@ -858,3 +859,4 @@ elif st.session_state.pagina_actual == "📝 Alta de Vecino":
                     st.rerun()
                 else:
                     st.error(f"Error al grabar en Google Sheets: {msg_sheets}")
+
