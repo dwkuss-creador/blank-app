@@ -1,6 +1,7 @@
 import io
 import json
 import os
+import re
 from fpdf import FPDF
 import pandas as pd
 import requests
@@ -13,7 +14,7 @@ st.set_page_config(
     page_title="APP VECINOS CALANDRIAS",
     page_icon="🏡",
     layout="wide",
-    initial_sidebar_state="collapsed",  # 📱 Menú colapsado en móviles
+    initial_sidebar_state="expanded",  # Menú abierto por defecto
 )
 
 # Carpeta física persistente para la galería
@@ -48,7 +49,7 @@ st.markdown(
         font-size: 1rem;
         margin-bottom: 1rem;
     }
-    
+
     /* Tarjeta destacada de Alarma */
     .alarma-card {
         background-color: #EFF6FF;
@@ -58,7 +59,7 @@ st.markdown(
         border-left: 8px solid #1D4ED8;
         margin-bottom: 12px;
     }
-    
+
     /* Opciones del menú lateral más grandes */
     [data-testid="stSidebar"] .stRadio label {
         font-size: 1.15rem !important;
@@ -67,8 +68,8 @@ st.markdown(
         padding-bottom: 6px !important;
         cursor: pointer;
     }
-    
-    /* Campo de entrada de alarma llamativo */
+
+    /* Campo de entrada de texto (Apellido, Nombre, Celular, etc.) */
     div[data-testid="stTextInput"] input {
         border: 2px solid #2563EB !important;
         background-color: #F8FAFC !important;
@@ -77,12 +78,28 @@ st.markdown(
         color: #0F172A !important;
         border-radius: 8px !important;
     }
+
+    /* Selectores (Manzana, Sector A/B, Lote) con el mismo estilo del campo Apellido */
+    div[data-testid="stSelectbox"] div[data-baseweb="select"] > div {
+        background-color: #F8FAFC !important;
+        border: 2px solid #2563EB !important;
+        border-radius: 8px !important;
+        color: #0F172A !important;
+    }
+    div[data-testid="stSelectbox"] div[data-baseweb="select"] * {
+        color: #0F172A !important;
+        font-weight: 600 !important;
+    }
+    div[data-testid="stSelectbox"] svg {
+        fill: #0F172A !important;
+    }
+
     /* Botones táctiles */
     .stButton>button {
         border-radius: 8px;
         font-weight: 600;
     }
-    
+
     @media (max-width: 768px) {
         .main-header { font-size: 1.5rem !important; }
         .sub-header { font-size: 0.92rem !important; }
@@ -161,11 +178,11 @@ def obtener_datos_remotos(api_url):
 def cargar_datos():
     api_url = get_api_url()
     data = obtener_datos_remotos(api_url)
-    
+
     # Blindaje contra respuesta en formato diccionario {vecinos: [...], telefonos: [...]}
     if isinstance(data, dict):
         data = data.get("vecinos", [])
-        
+
     if data and len(data) > 1:
         headers = [str(h).strip().upper() for h in data[0]]
         df = pd.DataFrame(data[1:], columns=headers)
@@ -197,48 +214,33 @@ def agregar_filas_sheets(nuevas_filas_dicts):
     try:
         resp = requests.post(api_url, json=payload, timeout=30)
         if resp.status_code == 200:
+            texto = resp.text.strip()
+            if texto.startswith("<") or "<html" in texto.lower():
+                return False, "Google Apps Script devolvió HTML. Verificá que 'Quién tiene acceso' sea 'Cualquier persona'."
+            try:
+                res_data = resp.json()
+                if isinstance(res_data, dict) and res_data.get("status") == "error":
+                    return False, f"Rechazado por Apps Script: {res_data.get('message', 'Acción no permitida')}"
+            except Exception:
+                pass
             st.cache_data.clear()
             return True, "Guardado exitoso."
         return False, f"Error HTTP {resp.status_code} desde Google Script."
     except Exception as e:
         return False, f"Error de conexión: {str(e)}"
 
-def guardar_datos_completos(df):
-    st.session_state.db_local = df
-    api_url = get_api_url()
-    if api_url:
-        try:
-            df_ordenado = ordenar_padron(df)
-            matriz = [COLUMNAS_BD] + df_ordenado.astype(str).values.tolist()
-            payload = {"action": "update_all", "data": matriz}
-            resp = requests.post(api_url, json=payload, timeout=30)
-            if resp.status_code == 200:
-                st.cache_data.clear()
-                return True, "Base sincronizada con éxito."
-            return False, f"Error HTTP {resp.status_code}"
-        except Exception as e:
-            return False, str(e)
-    return True, "Modo local"
-
 # ---------------------------------------------------------
-# VALIDACIÓN DE CELULAR
+# VALIDACIÓN Y NORMALIZACIÓN DE CELULAR
 # ---------------------------------------------------------
 def validar_celular(celular):
-    cel = celular.strip()
-    if not cel:
-        return False, "El celular no puede estar vacío."
-    if " " in cel:
-        return False, "Error: El celular no debe contener espacios."
-    if "-" in cel:
-        return False, "Error: El celular no debe contener guiones."
-    if not cel.isdigit():
-        return (
-            False,
-            "Error: El celular solo debe contener números (sin símbolos ni letras).",
-        )
-    if len(cel) < 8 or len(cel) > 15:
-        return False, "Error: El celular debe tener entre 8 y 15 dígitos numéricos."
-    return True, ""
+    cel = str(celular).strip()
+    # Extraer dígitos para tolerar espacios, guiones o signos +
+    cel_limpio = "".join(c for c in cel if c.isdigit())
+    if not cel_limpio:
+        return False, "El celular no puede estar vacío.", ""
+    if len(cel_limpio) < 8 or len(cel_limpio) > 15:
+        return False, "El celular debe contener entre 8 y 15 dígitos numéricos.", ""
+    return True, "", cel_limpio
 
 # ---------------------------------------------------------
 # EXPORTACIÓN
@@ -306,7 +308,6 @@ OPCIONES_MENU = [
     "📝 Alta de Vecino",
 ]
 
-# Control de administrador por parámetro URL (?admin=si)
 params = st.query_params
 es_admin = params.get("admin") == "si"
 
@@ -334,7 +335,7 @@ with st.sidebar:
         st.image("https://img.icons8.com/fluency/96/neighborhood.png", width=70)
     st.title("CALANDRIAS")
     st.caption("Padrón Vecinal y Alarmas")
-    
+
     indice_menu = 0
     if st.session_state.pagina_actual in OPCIONES_MENU:
         indice_menu = OPCIONES_MENU.index(st.session_state.pagina_actual)
@@ -343,7 +344,6 @@ with st.sidebar:
         OPCIONES_MENU,
         index=indice_menu,
     )
-    # Auto-ocultar menú lateral al cambiar de sección
     if pagina != st.session_state.pagina_actual:
         st.session_state.pagina_actual = pagina
         st.rerun()
@@ -379,7 +379,6 @@ if st.session_state.pagina_actual == "🔍 Consultas":
     """,
         unsafe_allow_html=True,
     )
-    # Formulario con vaciado automático
     with st.form(key="form_busqueda_alarma", clear_on_submit=True):
         c_input, c_btn = st.columns([5, 1.2])
         with c_input:
@@ -395,7 +394,7 @@ if st.session_state.pagina_actual == "🔍 Consultas":
         if buscar_disparado:
             st.session_state.filtro_alarma_activo = normalizar_valor(alarma_escrita)
             st.rerun()
-            
+
     alarma_activa = st.session_state.filtro_alarma_activo
     if alarma_activa:
         st.markdown(f"### Vecino de la Alarma Nº {alarma_activa}")
@@ -421,7 +420,7 @@ if st.session_state.pagina_actual == "🔍 Consultas":
             st.dataframe(df_alarma_resultado, use_container_width=True, hide_index=True)
         else:
             st.warning("No hay datos para esa seleccion")
-            
+
     # SECCIÓN DE UBICACIÓN
     st.markdown("---")
     st.markdown("#### 📍 Buscar por Ubicación:")
@@ -468,18 +467,16 @@ if st.session_state.pagina_actual == "🔍 Consultas":
             ]
         else:
             criterio_activo = "Base Completa"
-            
-    # Ordenamiento estricto
+
     df_resultado = ordenar_padron(df_resultado)
-    
+
     st.markdown("---")
     st.markdown(f"### Resultados ({criterio_activo})")
     if not df_resultado.empty:
         st.dataframe(df_resultado, use_container_width=True, hide_index=True)
     else:
         st.warning("No hay datos para esa seleccion")
-        
-    # Descargas organizadas para celular
+
     st.markdown("---")
     st.markdown("### 📥 Descargar Reportes")
     d_row1_col1, d_row1_col2 = st.columns(2)
@@ -604,7 +601,7 @@ elif st.session_state.pagina_actual == "🖼️ Galería e Imágenes":
                     st.success("¡Logo guardado en disco! Ahora persistirá aunque refresques.")
                     st.rerun()
         st.markdown("---")
-        
+
     st.markdown("### 📸 Galería del Barrio")
     archivos_galeria = sorted(os.listdir(CARPETA_GALERIA), reverse=True)
     if archivos_galeria:
@@ -648,7 +645,7 @@ elif st.session_state.pagina_actual == "📝 Alta de Vecino":
                 st.session_state.pagina_actual = "🔍 Consultas"
                 st.rerun()
         st.stop()
-        
+
     p = st.session_state.precarga or {}
     col_m, col_s, col_l = st.columns(3)
     with col_m:
@@ -661,43 +658,47 @@ elif st.session_state.pagina_actual == "📝 Alta de Vecino":
         lote = st.selectbox(
             "LOTE *", [str(i) for i in range(1, 25)], key="alta_lote"
         )
-        
+
     st.markdown("#### Contacto Principal")
     col_ap, col_nom = st.columns(2)
     with col_ap:
         apellido = st.text_input(
-            "APELLIDO *", value=p.get("c1_apellido", "")
+            "APELLIDO *", value=p.get("c1_apellido", ""), key="alta_ap"
         ).strip()
     with col_nom:
-        nombre = st.text_input("NOMBRE *", value=p.get("c1_nombre", "")).strip()
+        nombre = st.text_input(
+            "NOMBRE *", value=p.get("c1_nombre", ""), key="alta_nom"
+        ).strip()
     celular = st.text_input(
         "CELULAR *",
         value=p.get("c1_celular", ""),
-        placeholder="Sin guiones ni espacios",
+        placeholder="Ej: 1123456789 (se limpian guiones y espacios)",
+        key="alta_cel",
     ).strip()
-    
+
     st.markdown("##### Números de Alarma (Hasta 4 números por lote)")
     al_c1, al_c2 = st.columns(2)
     with al_c1:
         alarma1 = st.text_input(
-            "Alarma 1", value=str(p.get("alarma1", ""))
+            "Alarma 1", value=str(p.get("alarma1", "")), key="alta_al1"
         ).strip()
         alarma3 = st.text_input(
-            "Alarma 3", value=str(p.get("alarma3", ""))
+            "Alarma 3", value=str(p.get("alarma3", "")), key="alta_al3"
         ).strip()
     with al_c2:
         alarma2 = st.text_input(
-            "Alarma 2", value=str(p.get("alarma2", ""))
+            "Alarma 2", value=str(p.get("alarma2", "")), key="alta_al2"
         ).strip()
         alarma4 = st.text_input(
-            "Alarma 4", value=str(p.get("alarma4", ""))
+            "Alarma 4", value=str(p.get("alarma4", "")), key="alta_al4"
         ).strip()
-        
+
     st.markdown("---")
     otro_contacto = st.selectbox(
         "¿Quiere dar de alta otro contacto para el mismo lote?",
         ["No", "Si"],
         index=1 if p.get("tiene_c2") else 0,
+        key="alta_otro_contacto",
     )
     c2_apellido, c2_nombre, c2_celular = "", "", ""
     if otro_contacto == "Si":
@@ -705,33 +706,34 @@ elif st.session_state.pagina_actual == "📝 Alta de Vecino":
         c2_ap_col, c2_nom_col = st.columns(2)
         with c2_ap_col:
             c2_apellido = st.text_input(
-                "APELLIDO (2º Contacto) *", value=p.get("c2_apellido", "")
+                "APELLIDO (2º Contacto) *", value=p.get("c2_apellido", ""), key="c2_ap"
             ).strip()
         with c2_nom_col:
             c2_nombre = st.text_input(
-                "NOMBRE (2º Contacto) *", value=p.get("c2_nombre", "")
+                "NOMBRE (2º Contacto) *", value=p.get("c2_nombre", ""), key="c2_nom"
             ).strip()
         c2_celular = st.text_input(
             "CELULAR (2º Contacto) *",
             value=p.get("c2_celular", ""),
-            placeholder="Sin guiones ni espacios",
+            placeholder="Ej: 1123456789",
             key="c2_cel",
         ).strip()
-        
+
     if st.button("💾 Grabar Alta", type="primary", use_container_width=True):
-        valido_c1, msg_c1 = validar_celular(celular)
+        valido_c1, msg_c1, cel_c1 = validar_celular(celular)
         if not apellido or not nombre:
             st.error("Ingrese Apellido y Nombre del contacto principal.")
         elif not valido_c1:
             st.error(f"Contacto Principal: {msg_c1}")
         else:
             error_c2 = False
+            cel_c2 = ""
             if otro_contacto == "Si":
                 if not c2_apellido or not c2_nombre:
                     st.error("Ingrese Apellido y Nombre del segundo contacto.")
                     error_c2 = True
                 else:
-                    valido_c2, msg_c2 = validar_celular(c2_celular)
+                    valido_c2, msg_c2, cel_c2 = validar_celular(c2_celular)
                     if not valido_c2:
                         st.error(f"Segundo Contacto: {msg_c2}")
                         error_c2 = True
@@ -743,7 +745,7 @@ elif st.session_state.pagina_actual == "📝 Alta de Vecino":
                     "TIPO_CONTACTO": "Principal",
                     "APELLIDO": apellido,
                     "NOMBRE": nombre,
-                    "CELULAR": celular,
+                    "CELULAR": cel_c1,
                     "ALARMA_1": alarma1,
                     "ALARMA_2": alarma2,
                     "ALARMA_3": alarma3,
@@ -757,19 +759,20 @@ elif st.session_state.pagina_actual == "📝 Alta de Vecino":
                         "TIPO_CONTACTO": "Secundario",
                         "APELLIDO": c2_apellido,
                         "NOMBRE": c2_nombre,
-                        "CELULAR": c2_celular,
+                        "CELULAR": cel_c2,
                         "ALARMA_1": "",
                         "ALARMA_2": "",
                         "ALARMA_3": "",
                         "ALARMA_4": "",
                     })
-                ok, msg_sheets = agregar_filas_sheets(nuevas_filas)
+                with st.spinner("Guardando vecino en Google Sheets..."):
+                    ok, msg_sheets = agregar_filas_sheets(nuevas_filas)
                 if ok:
                     st.success("¡Datos guardados correctamente en Google Sheets!")
                     st.session_state.precarga = {
                         "c1_apellido": apellido,
                         "c1_nombre": nombre,
-                        "c1_celular": celular,
+                        "c1_celular": cel_c1,
                         "alarma1": alarma1,
                         "alarma2": alarma2,
                         "alarma3": alarma3,
@@ -777,7 +780,7 @@ elif st.session_state.pagina_actual == "📝 Alta de Vecino":
                         "tiene_c2": (otro_contacto == "Si"),
                         "c2_apellido": c2_apellido,
                         "c2_nombre": c2_nombre,
-                        "c2_celular": c2_celular,
+                        "c2_celular": cel_c2,
                     }
                     st.session_state.mostrar_dialogo_otro_lote = True
                     st.rerun()
