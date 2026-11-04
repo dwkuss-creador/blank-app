@@ -79,31 +79,29 @@ st.markdown(
         border-radius: 8px !important;
     }
 
-    /* SELECTORES (Manzana, Sector A/B, Lote) - Forzado total sobre BaseWeb y Modo Oscuro en PC */
-    div[data-testid="stSelectbox"] div[data-baseweb="select"],
-    div[data-testid="stSelectbox"] div[data-baseweb="select"] > div,
-    div[data-testid="stSelectbox"] div[data-baseweb="select"] [role="combobox"],
-    div[data-testid="stSelectbox"] div[data-baseweb="select"] div {
+    /* SELECTORES (Manzana, Sector A/B, Lote) - Forzado total sobre BaseWeb */
+    div[data-testid="stSelectbox"] [data-baseweb="select"],
+    div[data-testid="stSelectbox"] [data-baseweb="select"] > div,
+    div[data-testid="stSelectbox"] [data-baseweb="select"] > div > div,
+    div[data-testid="stSelectbox"] [data-baseweb="select"] div {
         background-color: #F8FAFC !important;
         color: #0F172A !important;
     }
-    div[data-testid="stSelectbox"] div[data-baseweb="select"] > div {
+    div[data-testid="stSelectbox"] [data-baseweb="select"] > div {
         border: 2px solid #2563EB !important;
         border-radius: 8px !important;
         min-height: 44px !important;
     }
-    div[data-testid="stSelectbox"] div[data-baseweb="select"] * {
+    div[data-testid="stSelectbox"] [data-baseweb="select"] * {
         color: #0F172A !important;
         font-weight: 600 !important;
     }
     div[data-testid="stSelectbox"] svg {
         fill: #0F172A !important;
-        color: #0F172A !important;
     }
 
-    /* Menú desplegable flotante al hacer clic en PC y móvil */
+    /* Menú desplegable flotante al hacer clic */
     div[data-baseweb="popover"],
-    div[data-baseweb="popover"] > div,
     ul[data-baseweb="menu"],
     li[data-baseweb="menu-item"] {
         background-color: #FFFFFF !important;
@@ -198,28 +196,44 @@ def cargar_datos():
     api_url = get_api_url()
     data = obtener_datos_remotos(api_url)
 
-    # Blindaje contra respuesta en formato diccionario {vecinos: [...], telefonos: [...]}
-    if isinstance(data, dict):
-        data = data.get("vecinos", [])
+    vecinos_raw = []
+    telefonos_raw = []
 
-    if data and len(data) > 1:
-        headers = [str(h).strip().upper() for h in data[0]]
-        df = pd.DataFrame(data[1:], columns=headers)
+    if isinstance(data, dict):
+        vecinos_raw = data.get("vecinos", [])
+        telefonos_raw = data.get("telefonos", [])
+    elif isinstance(data, list):
+        vecinos_raw = data
+
+    # 1. Procesamiento padrón de vecinos
+    df_v = pd.DataFrame(columns=COLUMNAS_BD)
+    if vecinos_raw and len(vecinos_raw) > 1:
+        headers = [str(h).strip().upper() for h in vecinos_raw[0]]
+        df_v = pd.DataFrame(vecinos_raw[1:], columns=headers)
         for col in COLUMNAS_BD:
-            if col not in df.columns:
-                df[col] = ""
-        df = df[COLUMNAS_BD]
+            if col not in df_v.columns:
+                df_v[col] = ""
+        df_v = df_v[COLUMNAS_BD]
         for col in COLUMNAS_BD:
-            df[col] = df[col].apply(normalizar_valor)
-        # Si un vecino se da de alta nuevamente, keep='last' toma sus datos actualizados
-        df = df.drop_duplicates(
+            df_v[col] = df_v[col].apply(normalizar_valor)
+        df_v = df_v.drop_duplicates(
             subset=["MANZANA", "SECTOR", "LOTE", "TIPO_CONTACTO"], keep="last"
         )
-        df = ordenar_padron(df)
-        return df.fillna("")
-    if "db_local" not in st.session_state:
-        st.session_state.db_local = pd.DataFrame(columns=COLUMNAS_BD)
-    return st.session_state.db_local
+        df_v = ordenar_padron(df_v).fillna("")
+    elif "db_local" in st.session_state:
+        df_v = st.session_state.db_local
+
+    st.session_state.db_local = df_v
+
+    # 2. Procesamiento directorio de teléfonos (Hoja DIRECTORIO_TELEFONOS)
+    df_t = pd.DataFrame()
+    if telefonos_raw and len(telefonos_raw) > 1:
+        headers_t = [str(h).strip().upper() for h in telefonos_raw[0]]
+        df_t = pd.DataFrame(telefonos_raw[1:], columns=headers_t)
+        for col in df_t.columns:
+            df_t[col] = df_t[col].apply(normalizar_valor)
+
+    return df_v, df_t
 
 def agregar_filas_sheets(nuevas_filas_dicts):
     api_url = get_api_url()
@@ -371,7 +385,8 @@ with st.sidebar:
     else:
         st.info("🟡 Modo de prueba")
 
-df_base = cargar_datos()
+# Carga de datos unificada
+df_base, df_telefonos = cargar_datos()
 
 # =========================================================
 # SECCIÓN 1: CONSULTAS
@@ -548,20 +563,59 @@ elif st.session_state.pagina_actual == "ℹ️ Datos Útiles":
         '<div class="sub-header">Información de contacto, emergencias y servicios del barrio.</div>',
         unsafe_allow_html=True,
     )
+
+    # ---------------------------------------------------------
+    # TARJETA 1: TELÉFONOS DE EMERGENCIA (ANCHO COMPLETO)
+    # ---------------------------------------------------------
+    st.markdown("""
+    <div style="background-color: #FEF2F2; border: 2px solid #EF4444; border-left: 8px solid #DC2626; border-radius: 10px; padding: 18px 20px; margin-bottom: 24px;">
+        <h3 style="color: #991B1B; margin-top: 0; margin-bottom: 14px; font-size: 1.35rem;">🚨 Teléfonos de Emergencia</h3>
+    """, unsafe_allow_html=True)
+
+    # Filtro: registros marcados con TARJETA == 'EMERGENCIA' y ACTIVO != 'NO'
+    df_emergencias = pd.DataFrame()
+    if not df_telefonos.empty and "TARJETA" in df_telefonos.columns:
+        filtro_tarjeta = df_telefonos["TARJETA"].str.upper().str.contains("EMERGENCIA")
+        if "ACTIVO" in df_telefonos.columns:
+            filtro_activo = df_telefonos["ACTIVO"].str.upper() != "NO"
+            df_emergencias = df_telefonos[filtro_tarjeta & filtro_activo]
+        else:
+            df_emergencias = df_telefonos[filtro_tarjeta]
+
+    if not df_emergencias.empty:
+        for _, row_tel in df_emergencias.iterrows():
+            nombre_tel = row_tel.get("NOMBRE", "Sin Nombre")
+            numero_tel = row_tel.get("TELEFONO", "")
+            num_clean = "".join(c for c in str(numero_tel) if c.isdigit() or c == '+')
+
+            st.markdown(f"""
+            <div style="background-color: #FFFFFF; border: 1px solid #FECACA; border-radius: 8px; padding: 12px 16px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                <div>
+                    <span style="font-size: 1.05rem; font-weight: 700; color: #1E293B;">{nombre_tel}</span>
+                </div>
+                <div>
+                    <a href="tel:{num_clean}" style="background-color: #DC2626; color: #FFFFFF !important; font-weight: 600; padding: 6px 14px; border-radius: 6px; text-decoration: none; display: inline-flex; align-items: center; gap: 6px;">
+                        📞 {numero_tel}
+                    </a>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+    else:
+        st.info("ℹ️ Sincronizando teléfonos de emergencia desde la hoja 'DIRECTORIO_TELEFONOS'...")
+
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    # Bloques secundarios informativos
     col1, col2 = st.columns(2)
     with col1:
-        st.markdown("### 🚨 Teléfonos de Emergencia")
-        st.info("""
-        * **Guardia / Portería Calandrias:** (A completar)
-        * **Policía / Comisaría:** 911 / (A completar)
-        * **Bomberos:** 100 / (A completar)
-        * **Emergencias Médicas / Ambulancia:** 107
-        """)
-    with col2:
         st.markdown("### 🏢 Administración y Servicios")
         st.info("""
         * **Administración del Barrio:** (A completar)
         * **Mantenimiento General:** (A completar)
+        """)
+    with col2:
+        st.markdown("### 📋 Información General")
+        st.info("""
         * **Recolección de Residuos:** Días y horarios a definir
         * **Comisión Vecinal:** (A completar)
         """)
