@@ -22,10 +22,24 @@ st.set_page_config(
 CARPETA_GALERIA = "galeria_fotos"
 os.makedirs(CARPETA_GALERIA, exist_ok=True)
 
-# Estilos CSS: Bloqueo de oscurecimiento + Adaptabilidad móvil + Forzado modo claro en inputs/selectores
+# Estilos CSS: Bloqueo de oscurecimiento + Eliminación de margen superior + Adaptabilidad móvil
 st.markdown(
     """
 <style>
+    /* ELIMINAR ESPACIO EN BLANCO SUPERIOR */
+    header[data-testid="stHeader"] {
+        background-color: transparent !important;
+        height: 1.5rem !important;
+        z-index: 1;
+    }
+    .block-container,
+    div[data-testid="stAppViewBlockContainer"] {
+        padding-top: 0.6rem !important;
+        padding-bottom: 0.8rem !important;
+        padding-left: 0.8rem !important;
+        padding-right: 0.8rem !important;
+    }
+
     /* EVITAR OSCURECIMIENTO / DESENFOQUE AL RECARGAR O PENSAR */
     [data-stale="true"] {
         opacity: 1 !important;
@@ -38,17 +52,18 @@ st.markdown(
     .element-container, .stMarkdown, .stDataFrame, .stTextInput, .stButton {
         opacity: 1 !important;
     }
-    /* Tipografía y encabezados */
+
+    /* Tipografía y encabezados generales */
     .main-header {
-        font-size: 1.85rem;
+        font-size: 1.7rem;
         font-weight: 700;
         color: #1E3A8A;
         margin-bottom: 0.2rem;
     }
     .sub-header {
         color: #4B5563;
-        font-size: 1rem;
-        margin-bottom: 1rem;
+        font-size: 0.95rem;
+        margin-bottom: 0.8rem;
     }
 
     /* Tarjeta destacada de Alarma */
@@ -119,8 +134,8 @@ st.markdown(
     }
 
     @media (max-width: 768px) {
-        .main-header { font-size: 1.5rem !important; }
-        .sub-header { font-size: 0.92rem !important; }
+        .main-header { font-size: 1.4rem !important; }
+        .sub-header { font-size: 0.9rem !important; }
         .stButton>button {
             padding-top: 10px !important;
             padding-bottom: 10px !important;
@@ -554,26 +569,27 @@ if st.session_state.pagina_actual == "🔍 Consultas":
         )
 
 # =========================================================
-# SECCIÓN: CLIMA Y PRONÓSTICO (WINDY)
+# SECCIÓN: CLIMA Y PRONÓSTICO (WINDY COMPACTO SIN SCROLL)
 # =========================================================
 elif st.session_state.pagina_actual == "🌤️ Clima y Pronóstico":
+    # Encabezado compacto de una sola línea sin margen desperdiciado
     st.markdown(
-        '<div class="main-header">🌤️ Pronóstico del Tiempo</div>',
-        unsafe_allow_html=True,
-    )
-    st.markdown(
-        '<div class="sub-header">Radar meteorológico en tiempo real y pronóstico extendido para la zona (Brandsen / Calandrias).</div>',
+        """
+        <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; padding: 0 4px;">
+            <span style="font-size: 1.35rem; font-weight: 700; color: #1E3A8A;">🌤️ Pronóstico del Tiempo (Calandrias / Brandsen)</span>
+            <span style="font-size: 0.85rem; color: #64748B; font-weight: 500;">Radar meteorológico en vivo • Windy</span>
+        </div>
+        """,
         unsafe_allow_html=True,
     )
 
-    # Coordenadas geográficas de la zona Calandrias - Brandsen
     LAT_ZONA = -35.168
     LON_ZONA = -58.234
 
     windy_iframe_url = (
         f"https://embed.windy.com/embed2.html?"
         f"lat={LAT_ZONA}&lon={LON_ZONA}&detailLat={LAT_ZONA}&detailLon={LON_ZONA}"
-        f"&width=650&height=520&zoom=11&level=surface&overlay=wind"
+        f"&width=650&height=480&zoom=11&level=surface&overlay=wind"
         f"&product=ecmwf&menu=&message=true&marker=true&calendar=now"
         f"&pressure=true&type=map&location=coordinates&detail=true"
         f"&metricWind=km%2Fh&metricTemp=%C2%B0C&radarRange=-1"
@@ -583,13 +599,13 @@ elif st.session_state.pagina_actual == "🌤️ Clima y Pronóstico":
         f"""
         <iframe 
             width="100%" 
-            height="550" 
+            height="490" 
             src="{windy_iframe_url}" 
             frameborder="0" 
-            style="border-radius: 12px; border: 1px solid #CBD5E1; box-shadow: 0 2px 8px rgba(0,0,0,0.06);">
+            style="border-radius: 10px; border: 1px solid #CBD5E1; box-shadow: 0 2px 6px rgba(0,0,0,0.06); display: block;">
         </iframe>
         """,
-        height=570,
+        height=505,
     )
 
 # =========================================================
