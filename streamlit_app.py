@@ -1,4 +1,3 @@
-
 import io
 import json
 import os
@@ -7,6 +6,7 @@ from fpdf import FPDF
 import pandas as pd
 import requests
 import streamlit as st
+import streamlit.components.v1 as components
 
 # ---------------------------------------------------------
 # CONFIGURACIÓN DE PÁGINA Y ESTILOS
@@ -336,6 +336,7 @@ def exportar_pdf(df, titulo="Reporte Vecinos - Calandrias"):
 # ---------------------------------------------------------
 OPCIONES_MENU = [
     "🔍 Consultas",
+    "🌤️ Clima y Pronóstico",
     "ℹ️ Datos Útiles",
     "🖼️ Galería e Imágenes",
     "📝 Alta de Vecino",
@@ -553,6 +554,45 @@ if st.session_state.pagina_actual == "🔍 Consultas":
         )
 
 # =========================================================
+# SECCIÓN: CLIMA Y PRONÓSTICO (WINDY)
+# =========================================================
+elif st.session_state.pagina_actual == "🌤️ Clima y Pronóstico":
+    st.markdown(
+        '<div class="main-header">🌤️ Pronóstico del Tiempo</div>',
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        '<div class="sub-header">Radar meteorológico en tiempo real y pronóstico extendido para la zona (Brandsen / Calandrias).</div>',
+        unsafe_allow_html=True,
+    )
+
+    # Coordenadas geográficas de la zona Calandrias - Brandsen
+    LAT_ZONA = -35.168
+    LON_ZONA = -58.234
+
+    windy_iframe_url = (
+        f"https://embed.windy.com/embed2.html?"
+        f"lat={LAT_ZONA}&lon={LON_ZONA}&detailLat={LAT_ZONA}&detailLon={LON_ZONA}"
+        f"&width=650&height=520&zoom=11&level=surface&overlay=wind"
+        f"&product=ecmwf&menu=&message=true&marker=true&calendar=now"
+        f"&pressure=true&type=map&location=coordinates&detail=true"
+        f"&metricWind=km%2Fh&metricTemp=%C2%B0C&radarRange=-1"
+    )
+
+    components.html(
+        f"""
+        <iframe 
+            width="100%" 
+            height="550" 
+            src="{windy_iframe_url}" 
+            frameborder="0" 
+            style="border-radius: 12px; border: 1px solid #CBD5E1; box-shadow: 0 2px 8px rgba(0,0,0,0.06);">
+        </iframe>
+        """,
+        height=570,
+    )
+
+# =========================================================
 # SECCIÓN 2: DATOS ÚTILES
 # =========================================================
 elif st.session_state.pagina_actual == "ℹ️ Datos Útiles":
@@ -621,12 +661,10 @@ elif st.session_state.pagina_actual == "ℹ️ Datos Útiles":
             df_utiles = df_telefonos[filtro_tarjeta_u]
 
     if not df_utiles.empty and "CATEGORIA" in df_utiles.columns:
-        # Categorías únicas en orden alfabético
         categorias = sorted([c for c in df_utiles["CATEGORIA"].dropna().unique() if str(c).strip() != ""])
 
         for cat in categorias:
             df_cat = df_utiles[df_utiles["CATEGORIA"] == cat].copy()
-            # Orden alfabético por Nombre dentro de la categoría
             if "NOMBRE" in df_cat.columns:
                 df_cat = df_cat.sort_values(by="NOMBRE", key=lambda col: col.str.lower())
 
