@@ -572,7 +572,6 @@ if st.session_state.pagina_actual == "🔍 Consultas":
 # SECCIÓN: CLIMA Y PRONÓSTICO (WINDY COMPACTO SIN SCROLL)
 # =========================================================
 elif st.session_state.pagina_actual == "🌤️ Clima y Pronóstico":
-    # Encabezado compacto de una sola línea sin margen desperdiciado
     st.markdown(
         """
         <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; padding: 0 4px;">
@@ -621,9 +620,7 @@ elif st.session_state.pagina_actual == "ℹ️ Datos Útiles":
         unsafe_allow_html=True,
     )
 
-    # ---------------------------------------------------------
     # 1. TELÉFONOS DE EMERGENCIA
-    # ---------------------------------------------------------
     st.markdown("### 🚨 Teléfonos de Emergencia")
 
     df_emergencias = pd.DataFrame()
@@ -662,9 +659,7 @@ elif st.session_state.pagina_actual == "ℹ️ Datos Útiles":
     else:
         st.info("ℹ️ Sincronizando teléfonos de emergencia desde la hoja 'DIRECTORIO_TELEFONOS'...")
 
-    # ---------------------------------------------------------
     # 2. TELÉFONOS ÚTILES (ORGANIZADOS POR CATEGORÍA ALFABÉTICA)
-    # ---------------------------------------------------------
     st.markdown("### 📞 Teléfonos Útiles")
 
     df_utiles = pd.DataFrame()
@@ -762,6 +757,27 @@ elif st.session_state.pagina_actual == "🖼️ Galería e Imágenes":
                         f.write(archivo_logo.getvalue())
                     st.success("¡Logo guardado en disco! Ahora persistirá aunque refresques.")
                     st.rerun()
+
+        # Opción para eliminar fotos de la galería (Solo Admin)
+        archivos_para_borrar = sorted(os.listdir(CARPETA_GALERIA))
+        if archivos_para_borrar:
+            st.markdown("##### 🗑️ Eliminar Imagen de la Galería")
+            c_del1, c_del2 = st.columns([3, 1.5])
+            with c_del1:
+                img_a_borrar = st.selectbox(
+                    "Selecciona la imagen a eliminar:",
+                    archivos_para_borrar,
+                    key="sel_del_img",
+                    label_visibility="collapsed",
+                )
+            with c_del2:
+                if st.button("🗑️ Eliminar Foto", type="primary", use_container_width=True):
+                    ruta_borrar = os.path.join(CARPETA_GALERIA, img_a_borrar)
+                    if os.path.exists(ruta_borrar):
+                        os.remove(ruta_borrar)
+                        st.success(f"Imagen '{img_a_borrar}' eliminada con éxito.")
+                        st.rerun()
+
         st.markdown("---")
 
     st.markdown("### 📸 Galería del Barrio")
